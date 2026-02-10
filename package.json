@@ -6,7 +6,8 @@
   "license": "MIT",
   "author": "",
   "bin": {
-    "openclaw": "openclaw.mjs"
+    "openclaw": "openclaw.mjs",
+    "bernard": "bernard.mjs"
   },
   "files": [
     "assets/",
@@ -16,6 +17,7 @@
     "extensions/",
     "LICENSE",
     "openclaw.mjs",
+    "bernard.mjs",
     "README-header.png",
     "README.md",
     "skills/"
