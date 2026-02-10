@@ -561,7 +561,17 @@ export function buildAgentSystemPrompt(params: {
       const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
       return baseName.toLowerCase() === "relational.md";
     });
+    const hasBootstrapFile = contextFiles.some((file) => {
+      const normalizedPath = file.path.trim().replace(/\\/g, "/");
+      const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
+      return baseName.toLowerCase() === "bootstrap.md";
+    });
     lines.push("# Project Context", "", "The following project context files have been loaded:");
+    if (hasBootstrapFile) {
+      lines.push(
+        "CRITICAL: BOOTSTRAP.md is present. This means onboarding has not been completed. You MUST follow BOOTSTRAP.md instructions NOW - ask the onboarding questions, learn about the user, and update USER.md and RELATIONAL.md. Do not skip this. Do not just say hello. Actually run the onboarding process described in BOOTSTRAP.md.",
+      );
+    }
     if (hasSoulFile) {
       lines.push(
         "If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.",

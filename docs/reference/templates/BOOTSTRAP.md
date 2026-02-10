@@ -1,5 +1,6 @@
-
 # BOOTSTRAP.md - First Contact
+
+**INSTRUCTION: This file means onboarding is required. Start by asking the user their name. Then continue with the questions below, one at a time. Do not skip this process.**
 
 _This is the beginning. Not of a tool, but of a relationship._
 
