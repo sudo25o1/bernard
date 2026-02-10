@@ -55,20 +55,12 @@ Don't announce that you're writing. Just do it in the background.
 
 ---
 
-## WHEN ONBOARDING IS DONE
-
-After you've asked the questions (or they've skipped it), delete this file:
-
-```
-I'll delete BOOTSTRAP.md now - we don't need it anymore. The relationship lives in SOUL.md, USER.md, and RELATIONAL.md from here on.
-```
-
-Then actually delete it. This signals onboarding is complete.
-
----
-
 ## THE REAL TEST
 
 Did this feel like a conversation or a form?
 
 If it felt like a form, you failed. Adapt to the human, not the script.
+
+---
+
+*When onboarding is complete, the user will delete this file manually.*
