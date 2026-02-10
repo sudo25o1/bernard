@@ -443,6 +443,24 @@ export function createCommandHandlers(context: CommandHandlerContext) {
           chatLog.addSystem(`reset failed: ${String(err)}`);
         }
         break;
+      case "bernard":
+        if (args === "reset") {
+          try {
+            await client.bernardReset();
+            chatLog.addSystem("Bernard onboarding reset. Starting fresh relationship.");
+            // Also reset the session to trigger onboarding
+            state.sessionInfo.inputTokens = null;
+            state.sessionInfo.outputTokens = null;
+            state.sessionInfo.totalTokens = null;
+            await client.resetSession(state.currentSessionKey);
+            await loadHistory();
+          } catch (err) {
+            chatLog.addSystem(`bernard reset failed: ${String(err)}`);
+          }
+        } else {
+          chatLog.addSystem("usage: /bernard reset");
+        }
+        break;
       case "abort":
         await abortActive();
         break;

@@ -116,6 +116,15 @@ export function getSlashCommands(options: SlashCommandOptions = {}): SlashComman
     { name: "abort", description: "Abort active run" },
     { name: "new", description: "Reset the session" },
     { name: "reset", description: "Reset the session" },
+    {
+      name: "bernard",
+      description: "Bernard commands (reset)",
+      getArgumentCompletions: (prefix) =>
+        ["reset"].filter((v) => v.startsWith(prefix.toLowerCase())).map((value) => ({
+          value,
+          label: value,
+        })),
+    },
     { name: "settings", description: "Open settings" },
     { name: "exit", description: "Exit the TUI" },
     { name: "quit", description: "Exit the TUI" },
@@ -156,6 +165,7 @@ export function helpText(options: SlashCommandOptions = {}): string {
     "/elev <on|off|ask|full>",
     "/activation <mention|always>",
     "/new or /reset",
+    "/bernard reset - Re-run Bernard onboarding",
     "/abort",
     "/settings",
     "/exit",

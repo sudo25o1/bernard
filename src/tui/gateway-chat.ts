@@ -208,6 +208,10 @@ export class GatewayChatClient {
     return await this.client.request("sessions.reset", { key });
   }
 
+  async bernardReset() {
+    return await this.client.request("bernard.reset", {});
+  }
+
   async getStatus() {
     return await this.client.request("status");
   }
