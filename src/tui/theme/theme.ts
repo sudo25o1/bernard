@@ -9,28 +9,29 @@ import { highlight, supportsLanguage } from "cli-highlight";
 import type { SearchableSelectListTheme } from "../components/searchable-select-list.js";
 import { createSyntaxTheme } from "./syntax-theme.js";
 
+// Bernard palette - warm, personal, calm
 const palette = {
   text: "#E8E3D5",
-  dim: "#7B7F87",
-  accent: "#F6C453",
-  accentSoft: "#F2A65A",
-  border: "#3C414B",
-  userBg: "#2B2F36",
+  dim: "#8B8685",
+  accent: "#D4A574",      // Warm amber - softer than gold
+  accentSoft: "#C49A6C",  
+  border: "#3D3835",      // Warm gray
+  userBg: "#2D2926",      // Warm dark
   userText: "#F3EEE0",
-  systemText: "#9BA3B2",
-  toolPendingBg: "#1F2A2F",
-  toolSuccessBg: "#1E2D23",
-  toolErrorBg: "#2F1F1F",
-  toolTitle: "#F6C453",
+  systemText: "#A89F9A",  // Warm gray text
+  toolPendingBg: "#2A2520",
+  toolSuccessBg: "#252D23",
+  toolErrorBg: "#2F2320",
+  toolTitle: "#D4A574",
   toolOutput: "#E1DACB",
-  quote: "#8CC8FF",
-  quoteBorder: "#3B4D6B",
-  code: "#F0C987",
-  codeBlock: "#1E232A",
-  codeBorder: "#343A45",
-  link: "#7DD3A5",
-  error: "#F97066",
-  success: "#7DD3A5",
+  quote: "#A8C5D4",       // Soft blue
+  quoteBorder: "#4A5560",
+  code: "#E0C9A0",
+  codeBlock: "#242120",
+  codeBorder: "#3D3835",
+  link: "#8CBDA5",        // Soft green
+  error: "#D4756A",       // Softer red
+  success: "#8CBDA5",
 };
 
 const fg = (hex: string) => (text: string) => chalk.hex(hex)(text);
