@@ -1,12 +1,11 @@
-// Lobster palette tokens for CLI/UI theming. "lobster seam" == use this palette.
-// Keep in sync with docs/cli/index.md (CLI palette section).
+// Bernard palette - Ghost in the Shell terminal aesthetic
 export const LOBSTER_PALETTE = {
-  accent: "#FF5A2D",
-  accentBright: "#FF7A3D",
-  accentDim: "#D14A22",
-  info: "#FF8A5B",
-  success: "#2FBF71",
-  warn: "#FFB020",
-  error: "#E23D2D",
-  muted: "#8B7F77",
+  accent: "#00FF88",      // Terminal green
+  accentBright: "#00FFCC", // Cyan highlight  
+  accentDim: "#00AA66",   // Dimmed green
+  info: "#00CCFF",        // Cyan info
+  success: "#00FF88",     // Green success
+  warn: "#FFCC00",        // Amber warning
+  error: "#FF4444",       // Red error
+  muted: "#3D7A5A",       // Muted green
 } as const;
