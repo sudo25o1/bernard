@@ -321,10 +321,9 @@ export async function runTui(opts: TuiOptions) {
 
   const updateHeader = () => {
     const sessionLabel = formatSessionKey(currentSessionKey);
-    const agentLabel = formatAgentLabel(currentAgentId);
     header.setText(
       theme.header(
-        `bernard - ${sessionLabel}`,
+        `[ BERNARD ] // session:${sessionLabel}`,
       ),
     );
   };
@@ -511,10 +510,10 @@ export async function runTui(opts: TuiOptions) {
     const reasoningLabel =
       reasoning === "on" ? "reasoning" : reasoning === "stream" ? "reasoning:stream" : null;
     const footerParts = [
-      modelLabel,
-      tokens,
+      `sys:${modelLabel}`,
+      tokens ? `mem:${tokens}` : null,
     ].filter(Boolean);
-    footer.setText(theme.dim(footerParts.join(" | ")));
+    footer.setText(theme.dim(`// ${footerParts.join(" // ")}`));
   };
 
   const { openOverlay, closeOverlay } = createOverlayHandlers(tui, editor);

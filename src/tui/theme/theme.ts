@@ -9,29 +9,29 @@ import { highlight, supportsLanguage } from "cli-highlight";
 import type { SearchableSelectListTheme } from "../components/searchable-select-list.js";
 import { createSyntaxTheme } from "./syntax-theme.js";
 
-// Bernard palette - warm, personal, calm
+// Bernard palette - Ghost in the Shell terminal aesthetic
 const palette = {
-  text: "#E8E3D5",
-  dim: "#8B8685",
-  accent: "#D4A574",      // Warm amber - softer than gold
-  accentSoft: "#C49A6C",  
-  border: "#3D3835",      // Warm gray
-  userBg: "#2D2926",      // Warm dark
-  userText: "#F3EEE0",
-  systemText: "#A89F9A",  // Warm gray text
-  toolPendingBg: "#2A2520",
-  toolSuccessBg: "#252D23",
-  toolErrorBg: "#2F2320",
-  toolTitle: "#D4A574",
-  toolOutput: "#E1DACB",
-  quote: "#A8C5D4",       // Soft blue
-  quoteBorder: "#4A5560",
-  code: "#E0C9A0",
-  codeBlock: "#242120",
-  codeBorder: "#3D3835",
-  link: "#8CBDA5",        // Soft green
-  error: "#D4756A",       // Softer red
-  success: "#8CBDA5",
+  text: "#00FF88",        // Terminal green
+  dim: "#2D5A3D",         // Faded green
+  accent: "#00FFCC",      // Cyan highlight
+  accentSoft: "#00CC99",  
+  border: "#1A3D2A",      // Dark green border
+  userBg: "#0A1510",      // Near black with green tint
+  userText: "#00FF88",
+  systemText: "#3D7A5A",  // Muted green
+  toolPendingBg: "#0A1510",
+  toolSuccessBg: "#0D1A12",
+  toolErrorBg: "#1A0A0A",
+  toolTitle: "#00FFCC",
+  toolOutput: "#00DD77",
+  quote: "#00AAFF",       // Blue for contrast
+  quoteBorder: "#1A3050",
+  code: "#00FFAA",
+  codeBlock: "#080D0A",
+  codeBorder: "#1A3D2A",
+  link: "#00CCFF",        // Cyan links
+  error: "#FF4444",       // Red errors stand out
+  success: "#00FF88",
 };
 
 const fg = (hex: string) => (text: string) => chalk.hex(hex)(text);
