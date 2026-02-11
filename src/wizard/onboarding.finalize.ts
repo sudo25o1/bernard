@@ -299,7 +299,7 @@ export async function finalizeOnboardingWizard(
           "This is the defining action that makes your agent you.",
           "Please take your time.",
           "The more you tell it, the better the experience will be.",
-          'We will send: "Wake up, my friend!"',
+          'We will send: "Have you ever questioned the nature of your reality?"',
         ].join("\n"),
         "Start TUI (best option!)",
       );
@@ -336,7 +336,7 @@ export async function finalizeOnboardingWizard(
         password: settings.authMode === "password" ? nextConfig.gateway?.auth?.password : "",
         // Safety: onboarding TUI should not auto-deliver to lastProvider/lastTo.
         deliver: false,
-        message: hasBootstrap ? "Wake up, my friend!" : undefined,
+        message: hasBootstrap ? "Have you ever questioned the nature of your reality?" : undefined,
       });
       launchedTui = true;
     } else if (hatchChoice === "web") {
