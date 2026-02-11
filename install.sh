@@ -87,6 +87,42 @@ link() {
     echo -e "${GREEN}Bernard command available globally.${NC}"
 }
 
+# Setup caffeinate on macOS to prevent sleep
+setup_caffeinate() {
+    if [[ "$(uname)" != "Darwin" ]]; then
+        return
+    fi
+    
+    echo -e "${YELLOW}Setting up caffeinate (prevent sleep)...${NC}"
+    
+    mkdir -p ~/Library/LaunchAgents
+    
+    cat > ~/Library/LaunchAgents/com.bernard.caffeinate.plist << 'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bernard.caffeinate</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-dimsu</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+    
+    launchctl unload ~/Library/LaunchAgents/com.bernard.caffeinate.plist 2>/dev/null || true
+    launchctl load ~/Library/LaunchAgents/com.bernard.caffeinate.plist
+    
+    echo -e "${GREEN}Caffeinate running. Bernard won't sleep.${NC}"
+}
+
 # Run onboarding
 onboard() {
     echo ""
@@ -102,6 +138,7 @@ main() {
     clone_repo
     build
     link
+    setup_caffeinate
     onboard
 }
 
