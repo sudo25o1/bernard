@@ -87,6 +87,50 @@ link() {
     echo -e "${GREEN}Bernard command available globally.${NC}"
 }
 
+# Setup Bernard watcher LaunchAgent (macOS)
+setup_watcher() {
+    if [[ "$(uname)" != "Darwin" ]]; then
+        return
+    fi
+    
+    echo -e "${YELLOW}Setting up Bernard watcher...${NC}"
+    
+    mkdir -p ~/Library/LaunchAgents
+    mkdir -p ~/bernard/logs
+    
+    cat > ~/Library/LaunchAgents/com.bernard.watcher.plist << PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bernard.watcher</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>${HOME}/bernard/bernard.py</string>
+        <string>watch</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>${HOME}/bernard</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${HOME}/bernard/logs/watcher.log</string>
+    <key>StandardErrorPath</key>
+    <string>${HOME}/bernard/logs/watcher.error.log</string>
+</dict>
+</plist>
+PLIST
+    
+    launchctl unload ~/Library/LaunchAgents/com.bernard.watcher.plist 2>/dev/null || true
+    launchctl load ~/Library/LaunchAgents/com.bernard.watcher.plist
+    
+    echo -e "${GREEN}Bernard watcher running.${NC}"
+}
+
 # Run onboarding
 onboard() {
     echo ""
@@ -102,6 +146,7 @@ main() {
     clone_repo
     build
     link
+    setup_watcher
     onboard
 }
 
