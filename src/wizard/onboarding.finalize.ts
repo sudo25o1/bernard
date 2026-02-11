@@ -195,6 +195,46 @@ export async function finalizeOnboardingWizard(
     }
   }
 
+  // Bernard: Raw conversation logging
+  const enableRawLogging = await prompter.confirm({
+    message: "Turn on raw conversation logging?",
+    initialValue: true,
+  });
+
+  if (enableRawLogging) {
+    await prompter.note(
+      [
+        "Raw logging captures all conversations to build relationship context over time.",
+        "This is how Bernard learns your patterns and maintains continuity across sessions.",
+        "",
+        "Logs are stored locally in ~/bernard/raw/",
+        "Starting watcher in background...",
+      ].join("\n"),
+      "Bernard Memory",
+    );
+
+    // Start the watcher as a background process
+    const { spawn } = await import("node:child_process");
+    const bernardPath = path.join(process.cwd(), "bernard", "bernard.py");
+    const watcher = spawn("python3", [bernardPath, "watch"], {
+      detached: true,
+      stdio: "ignore",
+    });
+    watcher.unref();
+
+    await prompter.note(
+      [
+        "Watcher started. It will capture conversations from:",
+        "- Claude Code",
+        "- OpenCode",
+        "",
+        "To check status later: ps aux | grep bernard.py",
+        "To stop: pkill -f 'bernard.py watch'",
+      ].join("\n"),
+      "Watcher Running",
+    );
+  }
+
   if (!opts.skipHealth) {
     const probeLinks = resolveControlUiLinks({
       bind: nextConfig.gateway?.bind ?? "loopback",
