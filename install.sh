@@ -96,7 +96,10 @@ setup_watcher() {
     echo -e "${YELLOW}Setting up Bernard watcher...${NC}"
     
     mkdir -p ~/Library/LaunchAgents
-    mkdir -p ~/bernard/logs
+    mkdir -p "$INSTALL_DIR/logs"
+    mkdir -p "$INSTALL_DIR/raw"
+    mkdir -p "$INSTALL_DIR/daily"
+    mkdir -p "$INSTALL_DIR/.state"
     
     cat > ~/Library/LaunchAgents/com.bernard.watcher.plist << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -108,7 +111,7 @@ setup_watcher() {
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>${HOME}/bernard/bernard.py</string>
+        <string>${HOME}/bernard/bernard-memory/bernard.py</string>
         <string>watch</string>
     </array>
     <key>WorkingDirectory</key>
