@@ -9,7 +9,7 @@ import { highlight, supportsLanguage } from "cli-highlight";
 import type { SearchableSelectListTheme } from "../components/searchable-select-list.js";
 import { createSyntaxTheme } from "./syntax-theme.js";
 
-// Bernard palette - Ghost in the Shell terminal aesthetic
+// Bernard palette - terminal aesthetic
 const palette = {
   text: "#00FF88",        // Terminal green
   dim: "#2D5A3D",         // Faded green

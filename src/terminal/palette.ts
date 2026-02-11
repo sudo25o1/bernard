@@ -1,4 +1,4 @@
-// Bernard palette - Ghost in the Shell terminal aesthetic
+// Bernard palette - terminal aesthetic
 export const LOBSTER_PALETTE = {
   accent: "#00FF88",      // Terminal green
   accentBright: "#00FFCC", // Cyan highlight  
