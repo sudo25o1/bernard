@@ -78,9 +78,12 @@ export function normalizeGatewayTokenInput(value: unknown): string {
 
 export function printWizardHeader(runtime: RuntimeEnv) {
   const header = [
-    "",
-    "  bernard",
-    "",
+    "▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄",
+    "██░▄▄▄▄░██░▄▄▄██░▄▄▀██░▀██░██░▄▄▀██░▄▄▀██░▄▄▀███████",
+    "██░▄▄▄▄░██░▄▄▄██░▀▀▄██░█░█░██░▀▀░██░▀▀▄██░██░███████",
+    "██▄▄▄▄▄░██░▀▀▀██░██░██░██▄░██░██░██░██░██░▀▀░███████",
+    "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+    " ",
   ].join("\n");
   runtime.log(header);
 }
