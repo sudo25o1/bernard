@@ -11,13 +11,13 @@ import { createSyntaxTheme } from "./syntax-theme.js";
 
 // Bernard palette - terminal aesthetic
 const palette = {
-  text: "#00FF88",        // Terminal green
+  text: "#00FF88",        // Bernard responses - terminal green
   dim: "#2D5A3D",         // Faded green
   accent: "#00FFCC",      // Cyan highlight
   accentSoft: "#00CC99",  
   border: "#1A3D2A",      // Dark green border
   userBg: "#0A1510",      // Near black with green tint
-  userText: "#00FF88",
+  userText: "#00CCFF",    // User text - cyan (distinct from Bernard)
   systemText: "#3D7A5A",  // Muted green
   toolPendingBg: "#0A1510",
   toolSuccessBg: "#0D1A12",
