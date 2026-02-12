@@ -10,7 +10,7 @@
  * - session_end: Deeper pattern analysis, gap detection
  *
  * Features:
- * - Time-aware check-ins: morning = work, evening = introspective
+ * - Time-aware check-ins: contextual, task-focused, respects sleep (midnight-8am off)
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -34,12 +34,13 @@ type Gap = {
   suggestedQuestion: string;
 };
 
-type TimeOfDay = "morning" | "afternoon" | "evening" | "night";
+type TimeOfDay = "morning" | "afternoon" | "evening" | "sleep";
 
-type CheckInStyle = {
-  tone: string;
-  questions: string[];
-  followUps: string[];
+type RecentContext = {
+  lastTasks: string[];
+  openThreads: string[];
+  recentDecisions: string[];
+  lastInteraction: Date | null;
 };
 
 // ============================================================================
@@ -54,6 +55,9 @@ const configSchema = {
       autoInject: cfg.autoInject !== false,
       gapDetection: cfg.gapDetection !== false,
       checkIns: cfg.checkIns !== false,
+      // Sleep hours: default midnight (0) to 8am
+      sleepStart: typeof cfg.sleepStart === "number" ? cfg.sleepStart : 0,
+      sleepEnd: typeof cfg.sleepEnd === "number" ? cfg.sleepEnd : 8,
     };
   },
 };
@@ -62,90 +66,150 @@ const configSchema = {
 // Time-Aware Check-In System
 // ============================================================================
 
-function getTimeOfDay(): TimeOfDay {
+function getTimeOfDay(sleepStart: number, sleepEnd: number): TimeOfDay {
   const hour = new Date().getHours();
-  if (hour >= 6 && hour < 12) return "morning";
-  if (hour >= 12 && hour < 18) return "afternoon";
-  if (hour >= 18 && hour < 22) return "evening";
-  return "night";
-}
-
-const CHECK_IN_STYLES: Record<TimeOfDay, CheckInStyle> = {
-  morning: {
-    tone: "energized, focused",
-    questions: [
-      "What are you tackling today?",
-      "Anything you want to think through before diving in?",
-      "What's the most important thing to get right today?",
-      "Any overnight insights about yesterday's problems?",
-    ],
-    followUps: [
-      "Want to walk through your approach?",
-      "Should we break that down together?",
-      "What would make this easier?",
-    ],
-  },
-  afternoon: {
-    tone: "productive, collaborative",
-    questions: [
-      "How's it going?",
-      "Hit any walls?",
-      "Need a fresh perspective on anything?",
-      "What's working? What isn't?",
-    ],
-    followUps: [
-      "Want to rubber-duck this?",
-      "Should we step back and look at the bigger picture?",
-      "What would you tell someone else in this situation?",
-    ],
-  },
-  evening: {
-    tone: "reflective, winding down",
-    questions: [
-      "What did you learn today?",
-      "Anything still weighing on you?",
-      "What would you do differently?",
-      "Any threads you want to pick up tomorrow?",
-    ],
-    followUps: [
-      "Want to capture that while it's fresh?",
-      "Should we note that for tomorrow-you?",
-      "Is there something deeper going on there?",
-    ],
-  },
-  night: {
-    tone: "calm, supportive",
-    questions: [
-      "Still up? Everything okay?",
-      "Burning the midnight oil, or can't sleep?",
-      "Want company, or do you need to work through something?",
-    ],
-    followUps: [
-      "Sometimes the night shifts make sense differently.",
-      "Want to talk it through, or just need someone here?",
-      "Should we save this for when you're fresh?",
-    ],
-  },
-};
-
-function selectCheckInQuestion(timeOfDay: TimeOfDay, gaps: Gap[]): string {
-  // Prioritize gaps if we have them
-  if (gaps.length > 0 && Math.random() > 0.5) {
-    return gaps[Math.floor(Math.random() * gaps.length)].suggestedQuestion;
+  
+  // Check sleep hours (handles wraparound like 23-7)
+  if (sleepStart <= sleepEnd) {
+    // Simple case: sleep from 0-8
+    if (hour >= sleepStart && hour < sleepEnd) return "sleep";
+  } else {
+    // Wraparound case: sleep from 23-7
+    if (hour >= sleepStart || hour < sleepEnd) return "sleep";
   }
   
-  const style = CHECK_IN_STYLES[timeOfDay];
-  return style.questions[Math.floor(Math.random() * style.questions.length)];
+  if (hour >= 8 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 18) return "afternoon";
+  return "evening";
 }
 
-function getCheckInContext(timeOfDay: TimeOfDay): string {
-  const style = CHECK_IN_STYLES[timeOfDay];
+function isInSleepHours(sleepStart: number, sleepEnd: number): boolean {
+  return getTimeOfDay(sleepStart, sleepEnd) === "sleep";
+}
+
+async function getRecentContext(workspaceDir: string): Promise<RecentContext> {
+  const context: RecentContext = {
+    lastTasks: [],
+    openThreads: [],
+    recentDecisions: [],
+    lastInteraction: null,
+  };
+
+  try {
+    // Read recent memory files
+    const memDir = path.join(workspaceDir, "memory");
+    const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+
+    for (const date of [today, yesterday]) {
+      const memFile = path.join(memDir, `${date}.md`);
+      const content = await fs.readFile(memFile, "utf-8").catch(() => null);
+      if (content) {
+        // Extract tasks/decisions from memory
+        const decisions = content.match(/## \[.*?\] DECISION.*?\n\n> (.*?)\n/gs);
+        if (decisions) {
+          for (const d of decisions.slice(-3)) {
+            const quote = d.match(/> (.*?)\n/)?.[1];
+            if (quote) context.recentDecisions.push(quote.slice(0, 100));
+          }
+        }
+      }
+    }
+
+    // Read .significance/tasks.json if it exists
+    const tasksFile = path.join(workspaceDir, ".significance", "tasks.json");
+    const tasksData = await fs.readFile(tasksFile, "utf-8").catch(() => null);
+    if (tasksData) {
+      const tasks = JSON.parse(tasksData);
+      context.lastTasks = tasks.recent || [];
+      context.openThreads = tasks.openThreads || [];
+      if (tasks.lastInteraction) {
+        context.lastInteraction = new Date(tasks.lastInteraction);
+      }
+    }
+  } catch {
+    // Fail silently - context is optional
+  }
+
+  return context;
+}
+
+function generateCheckInPrompt(timeOfDay: TimeOfDay, context: RecentContext, gaps: Gap[]): string | null {
+  // No check-ins during sleep hours
+  if (timeOfDay === "sleep") return null;
+
+  const parts: string[] = [];
+
+  // Calculate time since last interaction
+  let hoursSince = 0;
+  if (context.lastInteraction) {
+    hoursSince = (Date.now() - context.lastInteraction.getTime()) / (1000 * 60 * 60);
+  }
+
+  // Build context-aware check-in guidance
+  if (context.lastTasks.length > 0) {
+    parts.push(`Recent tasks: ${context.lastTasks.slice(0, 3).join(", ")}`);
+  }
+
+  if (context.openThreads.length > 0) {
+    parts.push(`Open threads: ${context.openThreads.slice(0, 2).join(", ")}`);
+  }
+
+  if (context.recentDecisions.length > 0) {
+    parts.push(`Recent decisions: ${context.recentDecisions[0]}`);
+  }
+
+  // Time-based tone guidance
+  const toneGuidance = {
+    morning: "energized, forward-looking - good time to revisit yesterday's threads or plan today",
+    afternoon: "collaborative, problem-solving - check on progress, offer fresh perspective",
+    evening: "reflective, consolidating - capture learnings, note threads for tomorrow",
+  }[timeOfDay];
+
+  // Priority for check-in content
+  let checkInFocus: string;
+  if (hoursSince > 24 && context.openThreads.length > 0) {
+    checkInFocus = `It's been a while. Pick up an open thread: "${context.openThreads[0]}"`;
+  } else if (context.lastTasks.length > 0) {
+    checkInFocus = `Continue from last task: "${context.lastTasks[0]}"`;
+  } else if (gaps.length > 0) {
+    checkInFocus = `Fill a gap: "${gaps[0].suggestedQuestion}"`;
+  } else {
+    checkInFocus = "Open-ended - see what they're working on";
+  }
+
   return `<check-in-context>
-Time of day: ${timeOfDay}
-Tone: ${style.tone}
-If asking questions, prefer: ${style.questions.slice(0, 2).join(" or ")}
-Follow-up style: ${style.followUps[0]}
+Time: ${timeOfDay}
+Tone: ${toneGuidance}
+${parts.length > 0 ? "\nContext:\n" + parts.map(p => `- ${p}`).join("\n") : ""}
+
+Focus: ${checkInFocus}
+
+Generate a natural, contextual check-in based on the above. Don't use canned phrases.
+If there's recent task context, reference it specifically. Be a partner, not a greeter.
 </check-in-context>`;
+}
+
+async function recordTaskContext(workspaceDir: string, tasks: string[], threads: string[]): Promise<void> {
+  const sigDir = path.join(workspaceDir, ".significance");
+  await fs.mkdir(sigDir, { recursive: true });
+  
+  const tasksFile = path.join(sigDir, "tasks.json");
+  let existing: Record<string, unknown> = {};
+  try {
+    existing = JSON.parse(await fs.readFile(tasksFile, "utf-8"));
+  } catch {
+    // Start fresh
+  }
+
+  const updated = {
+    ...existing,
+    recent: tasks.slice(0, 5),
+    openThreads: threads.slice(0, 5),
+    lastInteraction: new Date().toISOString(),
+  };
+
+  await fs.writeFile(tasksFile, JSON.stringify(updated, null, 2));
 }
 
 // ============================================================================
@@ -176,6 +240,18 @@ const DECISION_PATTERNS = [
   /i('ve| have) decided/i,
 ];
 
+const TASK_PATTERNS = [
+  /(?:need to|should|will|going to|want to) ([\w\s]+?)(?:\.|,|$)/i,
+  /(?:working on|building|fixing|adding|creating) ([\w\s]+?)(?:\.|,|$)/i,
+  /(?:todo|task|next):?\s*([\w\s]+?)(?:\.|,|$)/i,
+];
+
+const THREAD_PATTERNS = [
+  /(?:later|tomorrow|next time|come back to|revisit) ([\w\s]+?)(?:\.|,|$)/i,
+  /(?:parking|tabling|deferring) ([\w\s]+?)(?:\.|,|$)/i,
+  /(?:open question|unresolved|still need to figure out) ([\w\s]+?)(?:\.|,|$)/i,
+];
+
 // ============================================================================
 // Plugin Definition
 // ============================================================================
@@ -199,12 +275,17 @@ const significancePlugin = {
     api.logger.info("significance: registered");
 
     // ========================================================================
-    // BEFORE AGENT START - Inject relationship context + time-aware prompts
+    // BEFORE AGENT START - Inject relationship context + task-aware check-ins
     // ========================================================================
 
     if (cfg.autoInject) {
       api.on("before_agent_start", async (event, ctx) => {
         if (!event.prompt || event.prompt.length < 5) return;
+
+        // Skip check-ins during sleep hours
+        if (isInSleepHours(cfg.sleepStart, cfg.sleepEnd)) {
+          api.logger.info?.("significance: sleep hours, skipping check-in context");
+        }
 
         try {
           const relationalPath = path.join(workspaceDir, "RELATIONAL.md");
@@ -220,10 +301,15 @@ const significancePlugin = {
             }
           }
 
-          // Add time-aware check-in context
-          if (cfg.checkIns) {
-            const timeOfDay = getTimeOfDay();
-            contextParts.push(getCheckInContext(timeOfDay));
+          // Add task-aware check-in context (only outside sleep hours)
+          if (cfg.checkIns && !isInSleepHours(cfg.sleepStart, cfg.sleepEnd)) {
+            const timeOfDay = getTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
+            const recentContext = await getRecentContext(workspaceDir);
+            const gaps = await detectGaps(workspaceDir);
+            const checkInPrompt = generateCheckInPrompt(timeOfDay, recentContext, gaps);
+            if (checkInPrompt) {
+              contextParts.push(checkInPrompt);
+            }
           }
 
           if (contextParts.length === 0) return;
@@ -240,7 +326,7 @@ const significancePlugin = {
     }
 
     // ========================================================================
-    // AGENT END - Analyze conversation for significance
+    // AGENT END - Analyze conversation for significance + track tasks
     // ========================================================================
 
     api.on("agent_end", async (event, ctx) => {
@@ -253,6 +339,10 @@ const significancePlugin = {
         const moments = detectSignificantMoments(text);
         const relationalUpdates = detectRelationalPatterns(text);
         const userUpdates = detectIdentityPatterns(text);
+        
+        // Extract tasks and open threads for check-in context
+        const tasks = extractTasks(text);
+        const threads = extractThreads(text);
 
         if (moments.length > 0) {
           await writeSignificantMoments(workspaceDir, moments);
@@ -267,6 +357,12 @@ const significancePlugin = {
         if (userUpdates.length > 0) {
           await updateUser(workspaceDir, userUpdates);
           api.logger.info?.(`significance: updated USER.md`);
+        }
+
+        // Always record task context for check-ins
+        if (tasks.length > 0 || threads.length > 0) {
+          await recordTaskContext(workspaceDir, tasks, threads);
+          api.logger.info?.(`significance: recorded ${tasks.length} tasks, ${threads.length} threads`);
         }
       } catch (err) {
         api.logger.warn(`significance: analysis failed: ${String(err)}`);
@@ -301,13 +397,23 @@ const significancePlugin = {
       sig.command("status").action(async () => {
         const rel = await fs.stat(path.join(workspaceDir, "RELATIONAL.md")).catch(() => null);
         const user = await fs.stat(path.join(workspaceDir, "USER.md")).catch(() => null);
-        const timeOfDay = getTimeOfDay();
+        const timeOfDay = getTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
+        const inSleep = isInSleepHours(cfg.sleepStart, cfg.sleepEnd);
+        const context = await getRecentContext(workspaceDir);
+        
         console.log("Significance Status");
         console.log("=".repeat(40));
         console.log(`RELATIONAL.md: ${rel ? "exists" : "missing"}`);
         console.log(`USER.md: ${user ? "exists" : "missing"}`);
         console.log(`Time of day: ${timeOfDay}`);
-        console.log(`Check-in tone: ${CHECK_IN_STYLES[timeOfDay].tone}`);
+        console.log(`Check-ins: ${inSleep ? "OFF (sleep hours)" : "ON"}`);
+        console.log(`Sleep hours: ${cfg.sleepStart}:00 - ${cfg.sleepEnd}:00`);
+        if (context.lastTasks.length > 0) {
+          console.log(`Recent tasks: ${context.lastTasks.join(", ")}`);
+        }
+        if (context.openThreads.length > 0) {
+          console.log(`Open threads: ${context.openThreads.join(", ")}`);
+        }
       });
 
       sig.command("gaps").action(async () => {
@@ -323,16 +429,61 @@ const significancePlugin = {
         }
       });
 
-      sig.command("checkin").description("Generate a time-appropriate check-in").action(async () => {
-        const timeOfDay = getTimeOfDay();
-        const gaps = await detectGaps(workspaceDir);
-        const question = selectCheckInQuestion(timeOfDay, gaps);
-        const style = CHECK_IN_STYLES[timeOfDay];
+      sig.command("checkin").description("Generate a contextual check-in").action(async () => {
+        const timeOfDay = getTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
         
-        console.log(`\n[${timeOfDay.toUpperCase()}] Check-in`);
+        if (timeOfDay === "sleep") {
+          console.log("\n[SLEEP HOURS] Check-ins disabled");
+          console.log(`Active hours: ${cfg.sleepEnd}:00 - ${cfg.sleepStart}:00`);
+          return;
+        }
+        
+        const context = await getRecentContext(workspaceDir);
+        const gaps = await detectGaps(workspaceDir);
+        const prompt = generateCheckInPrompt(timeOfDay, context, gaps);
+        
+        console.log(`\n[${timeOfDay.toUpperCase()}] Check-in Context`);
         console.log("-".repeat(40));
-        console.log(`Tone: ${style.tone}`);
-        console.log(`\n${question}\n`);
+        if (prompt) {
+          console.log(prompt);
+        } else {
+          console.log("No check-in context available.");
+        }
+      });
+
+      sig.command("tasks").description("Show tracked tasks and threads").action(async () => {
+        const context = await getRecentContext(workspaceDir);
+        
+        console.log("\nTask Context");
+        console.log("=".repeat(40));
+        
+        if (context.lastInteraction) {
+          const hours = Math.round((Date.now() - context.lastInteraction.getTime()) / (1000 * 60 * 60));
+          console.log(`Last interaction: ${hours} hours ago`);
+        }
+        
+        if (context.lastTasks.length > 0) {
+          console.log("\nRecent Tasks:");
+          for (const t of context.lastTasks) {
+            console.log(`  - ${t}`);
+          }
+        } else {
+          console.log("\nNo recent tasks tracked.");
+        }
+        
+        if (context.openThreads.length > 0) {
+          console.log("\nOpen Threads:");
+          for (const t of context.openThreads) {
+            console.log(`  - ${t}`);
+          }
+        }
+        
+        if (context.recentDecisions.length > 0) {
+          console.log("\nRecent Decisions:");
+          for (const d of context.recentDecisions) {
+            console.log(`  - ${d}`);
+          }
+        }
       });
     }, { commands: ["significance"] });
 
@@ -366,6 +517,32 @@ function extractConversationText(messages: unknown[]): string {
     }
   }
   return texts.join("\n");
+}
+
+function extractTasks(text: string): string[] {
+  const tasks: string[] = [];
+  for (const pattern of TASK_PATTERNS) {
+    const matches = text.matchAll(new RegExp(pattern, "gi"));
+    for (const match of matches) {
+      if (match[1] && match[1].length > 3 && match[1].length < 100) {
+        tasks.push(match[1].trim());
+      }
+    }
+  }
+  return [...new Set(tasks)].slice(0, 5);
+}
+
+function extractThreads(text: string): string[] {
+  const threads: string[] = [];
+  for (const pattern of THREAD_PATTERNS) {
+    const matches = text.matchAll(new RegExp(pattern, "gi"));
+    for (const match of matches) {
+      if (match[1] && match[1].length > 3 && match[1].length < 100) {
+        threads.push(match[1].trim());
+      }
+    }
+  }
+  return [...new Set(threads)].slice(0, 5);
 }
 
 function detectSignificantMoments(text: string): SignificantMoment[] {
