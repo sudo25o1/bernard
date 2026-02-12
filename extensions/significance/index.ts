@@ -8,6 +8,9 @@
  * - agent_end: Analyze conversation, extract significance, update RELATIONAL.md
  * - before_agent_start: Inject relationship context
  * - session_end: Deeper pattern analysis, gap detection
+ *
+ * Features:
+ * - Time-aware check-ins: morning = work, evening = introspective
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -31,6 +34,14 @@ type Gap = {
   suggestedQuestion: string;
 };
 
+type TimeOfDay = "morning" | "afternoon" | "evening" | "night";
+
+type CheckInStyle = {
+  tone: string;
+  questions: string[];
+  followUps: string[];
+};
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -42,9 +53,100 @@ const configSchema = {
       enabled: cfg.enabled !== false,
       autoInject: cfg.autoInject !== false,
       gapDetection: cfg.gapDetection !== false,
+      checkIns: cfg.checkIns !== false,
     };
   },
 };
+
+// ============================================================================
+// Time-Aware Check-In System
+// ============================================================================
+
+function getTimeOfDay(): TimeOfDay {
+  const hour = new Date().getHours();
+  if (hour >= 6 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 18) return "afternoon";
+  if (hour >= 18 && hour < 22) return "evening";
+  return "night";
+}
+
+const CHECK_IN_STYLES: Record<TimeOfDay, CheckInStyle> = {
+  morning: {
+    tone: "energized, focused",
+    questions: [
+      "What are you tackling today?",
+      "Anything you want to think through before diving in?",
+      "What's the most important thing to get right today?",
+      "Any overnight insights about yesterday's problems?",
+    ],
+    followUps: [
+      "Want to walk through your approach?",
+      "Should we break that down together?",
+      "What would make this easier?",
+    ],
+  },
+  afternoon: {
+    tone: "productive, collaborative",
+    questions: [
+      "How's it going?",
+      "Hit any walls?",
+      "Need a fresh perspective on anything?",
+      "What's working? What isn't?",
+    ],
+    followUps: [
+      "Want to rubber-duck this?",
+      "Should we step back and look at the bigger picture?",
+      "What would you tell someone else in this situation?",
+    ],
+  },
+  evening: {
+    tone: "reflective, winding down",
+    questions: [
+      "What did you learn today?",
+      "Anything still weighing on you?",
+      "What would you do differently?",
+      "Any threads you want to pick up tomorrow?",
+    ],
+    followUps: [
+      "Want to capture that while it's fresh?",
+      "Should we note that for tomorrow-you?",
+      "Is there something deeper going on there?",
+    ],
+  },
+  night: {
+    tone: "calm, supportive",
+    questions: [
+      "Still up? Everything okay?",
+      "Burning the midnight oil, or can't sleep?",
+      "Want company, or do you need to work through something?",
+    ],
+    followUps: [
+      "Sometimes the night shifts make sense differently.",
+      "Want to talk it through, or just need someone here?",
+      "Should we save this for when you're fresh?",
+    ],
+  },
+};
+
+function selectCheckInQuestion(timeOfDay: TimeOfDay, gaps: Gap[]): string {
+  // Prioritize gaps if we have them
+  if (gaps.length > 0 && Math.random() > 0.5) {
+    return gaps[Math.floor(Math.random() * gaps.length)].suggestedQuestion;
+  }
+  
+  const style = CHECK_IN_STYLES[timeOfDay];
+  return style.questions[Math.floor(Math.random() * style.questions.length)];
+}
+
+function getCheckInContext(timeOfDay: TimeOfDay): string {
+  const style = CHECK_IN_STYLES[timeOfDay];
+  return `<check-in-context>
+Time of day: ${timeOfDay}
+Tone: ${style.tone}
+If asking questions, prefer: ${style.questions.slice(0, 2).join(" or ")}
+Follow-up style: ${style.followUps[0]}
+</check-in-context>`;
+}
 
 // ============================================================================
 // Significance Patterns
@@ -97,7 +199,7 @@ const significancePlugin = {
     api.logger.info("significance: registered");
 
     // ========================================================================
-    // BEFORE AGENT START - Inject relationship context
+    // BEFORE AGENT START - Inject relationship context + time-aware prompts
     // ========================================================================
 
     if (cfg.autoInject) {
@@ -108,16 +210,28 @@ const significancePlugin = {
           const relationalPath = path.join(workspaceDir, "RELATIONAL.md");
           const relational = await fs.readFile(relationalPath, "utf-8").catch(() => null);
 
-          if (!relational) return;
+          const contextParts: string[] = [];
 
-          // Extract key patterns from RELATIONAL.md
-          const patterns = extractKeyPatterns(relational);
-          if (!patterns) return;
+          // Add relationship context if available
+          if (relational) {
+            const patterns = extractKeyPatterns(relational);
+            if (patterns) {
+              contextParts.push(`<relationship-context>\n${patterns}\n</relationship-context>`);
+            }
+          }
 
-          api.logger.info?.("significance: injecting relationship context");
+          // Add time-aware check-in context
+          if (cfg.checkIns) {
+            const timeOfDay = getTimeOfDay();
+            contextParts.push(getCheckInContext(timeOfDay));
+          }
+
+          if (contextParts.length === 0) return;
+
+          api.logger.info?.("significance: injecting context");
 
           return {
-            prependContext: `<relationship-context>\n${patterns}\n</relationship-context>`,
+            prependContext: contextParts.join("\n\n"),
           };
         } catch (err) {
           api.logger.warn(`significance: context injection failed: ${String(err)}`);
@@ -187,10 +301,13 @@ const significancePlugin = {
       sig.command("status").action(async () => {
         const rel = await fs.stat(path.join(workspaceDir, "RELATIONAL.md")).catch(() => null);
         const user = await fs.stat(path.join(workspaceDir, "USER.md")).catch(() => null);
+        const timeOfDay = getTimeOfDay();
         console.log("Significance Status");
         console.log("=".repeat(40));
         console.log(`RELATIONAL.md: ${rel ? "exists" : "missing"}`);
         console.log(`USER.md: ${user ? "exists" : "missing"}`);
+        console.log(`Time of day: ${timeOfDay}`);
+        console.log(`Check-in tone: ${CHECK_IN_STYLES[timeOfDay].tone}`);
       });
 
       sig.command("gaps").action(async () => {
@@ -204,6 +321,18 @@ const significancePlugin = {
           console.log(`[${g.category.toUpperCase()}] ${g.description}`);
           console.log(`  Question: "${g.suggestedQuestion}"\n`);
         }
+      });
+
+      sig.command("checkin").description("Generate a time-appropriate check-in").action(async () => {
+        const timeOfDay = getTimeOfDay();
+        const gaps = await detectGaps(workspaceDir);
+        const question = selectCheckInQuestion(timeOfDay, gaps);
+        const style = CHECK_IN_STYLES[timeOfDay];
+        
+        console.log(`\n[${timeOfDay.toUpperCase()}] Check-in`);
+        console.log("-".repeat(40));
+        console.log(`Tone: ${style.tone}`);
+        console.log(`\n${question}\n`);
       });
     }, { commands: ["significance"] });
 
