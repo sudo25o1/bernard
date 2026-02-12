@@ -1,0 +1,36 @@
+{
+  "id": "significance",
+  "kind": "extension",
+  "uiHints": {
+    "enabled": {
+      "label": "Enable Significance",
+      "help": "Continuously analyze conversations for relational significance"
+    },
+    "autoInject": {
+      "label": "Auto-Inject Context",
+      "help": "Automatically inject relevant relationship context before responses"
+    },
+    "gapDetection": {
+      "label": "Gap Detection", 
+      "help": "Detect and track gaps in relationship understanding"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "autoInject": {
+        "type": "boolean",
+        "default": true
+      },
+      "gapDetection": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  }
+}
