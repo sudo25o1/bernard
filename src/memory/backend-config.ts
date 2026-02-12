@@ -59,7 +59,7 @@ export type ResolvedQmdConfig = {
   scope?: SessionSendPolicyConfig;
 };
 
-const DEFAULT_BACKEND: MemoryBackend = "builtin";
+const DEFAULT_BACKEND: MemoryBackend = "qmd";
 const DEFAULT_CITATIONS: MemoryCitationsMode = "auto";
 const DEFAULT_QMD_INTERVAL = "5m";
 const DEFAULT_QMD_DEBOUNCE_MS = 15_000;
