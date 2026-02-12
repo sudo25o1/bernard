@@ -175,7 +175,7 @@ function resolveSessionConfig(
   cfg: MemoryQmdConfig["sessions"],
   workspaceDir: string,
 ): ResolvedQmdSessionConfig {
-  const enabled = Boolean(cfg?.enabled);
+  const enabled = cfg?.enabled !== false;
   const exportDirRaw = cfg?.exportDir?.trim();
   const exportDir = exportDirRaw ? resolvePath(exportDirRaw, workspaceDir) : undefined;
   const retentionDays =
