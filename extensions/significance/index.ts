@@ -16,6 +16,15 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { extractCombinedContext, type QmdContextResult } from "./src/qmd-context.js";
+import {
+  loadIdleState,
+  saveIdleState,
+  shouldSendCheckIn,
+  isInLearningMode,
+  getTimeOfDay as getIdleTimeOfDay,
+  type IdleState,
+} from "./src/idle-service.js";
 
 // ============================================================================
 // Types
@@ -55,9 +64,15 @@ const configSchema = {
       autoInject: cfg.autoInject !== false,
       gapDetection: cfg.gapDetection !== false,
       checkIns: cfg.checkIns !== false,
-      // Sleep hours: default midnight (0) to 8am
-      sleepStart: typeof cfg.sleepStart === "number" ? cfg.sleepStart : 0,
-      sleepEnd: typeof cfg.sleepEnd === "number" ? cfg.sleepEnd : 8,
+      proactiveCheckIns: cfg.proactiveCheckIns !== false,
+      useQmd: cfg.useQmd !== false, // Use QMD for semantic search
+      // Sleep hours: support both number (hours) and string (HH:MM)
+      sleepStart: cfg.sleepStart ?? "00:00",
+      sleepEnd: cfg.sleepEnd ?? "08:00",
+      // Idle thresholds
+      checkIntervalMs: Number(cfg.checkIntervalMs) || 1800000, // 30 min default
+      learningIdleThresholdMs: Number(cfg.learningIdleThresholdMs) || 7200000, // 2 hours
+      matureIdleThresholdMs: Number(cfg.matureIdleThresholdMs) || 14400000, // 4 hours
     };
   },
 };
@@ -66,16 +81,27 @@ const configSchema = {
 // Time-Aware Check-In System
 // ============================================================================
 
-function getTimeOfDay(sleepStart: number, sleepEnd: number): TimeOfDay {
+/**
+ * Parse time to hour (supports HH:MM string or number)
+ */
+function parseTimeToHour(time: string | number): number {
+  if (typeof time === "number") return time;
+  const parts = time.split(":");
+  return Number(parts[0]);
+}
+
+function getTimeOfDay(sleepStart: string | number, sleepEnd: string | number): TimeOfDay {
   const hour = new Date().getHours();
+  const startHour = parseTimeToHour(sleepStart);
+  const endHour = parseTimeToHour(sleepEnd);
   
   // Check sleep hours (handles wraparound like 23-7)
-  if (sleepStart <= sleepEnd) {
+  if (startHour <= endHour) {
     // Simple case: sleep from 0-8
-    if (hour >= sleepStart && hour < sleepEnd) return "sleep";
+    if (hour >= startHour && hour < endHour) return "sleep";
   } else {
     // Wraparound case: sleep from 23-7
-    if (hour >= sleepStart || hour < sleepEnd) return "sleep";
+    if (hour >= startHour || hour < endHour) return "sleep";
   }
   
   if (hour >= 8 && hour < 12) return "morning";
@@ -83,11 +109,14 @@ function getTimeOfDay(sleepStart: number, sleepEnd: number): TimeOfDay {
   return "evening";
 }
 
-function isInSleepHours(sleepStart: number, sleepEnd: number): boolean {
+function isInSleepHours(sleepStart: string | number, sleepEnd: string | number): boolean {
   return getTimeOfDay(sleepStart, sleepEnd) === "sleep";
 }
 
-async function getRecentContext(workspaceDir: string): Promise<RecentContext> {
+async function getRecentContext(
+  workspaceDir: string,
+  cfg?: { useQmd?: boolean; config?: unknown; agentId?: string },
+): Promise<RecentContext> {
   const context: RecentContext = {
     lastTasks: [],
     openThreads: [],
@@ -95,6 +124,28 @@ async function getRecentContext(workspaceDir: string): Promise<RecentContext> {
     lastInteraction: null,
   };
 
+  // Try QMD semantic search first if enabled
+  if (cfg?.useQmd && cfg?.config) {
+    try {
+      const qmdContext = await extractCombinedContext({
+        cfg: cfg.config as import("../../src/config/config.js").OpenClawConfig,
+        agentId: cfg.agentId || "bernard",
+        workspaceDir,
+      });
+      
+      if (qmdContext.recentTasks.length > 0 || qmdContext.openThreads.length > 0) {
+        context.lastTasks = qmdContext.recentTasks;
+        context.openThreads = qmdContext.openThreads;
+        context.recentDecisions = qmdContext.recentDecisions;
+        // QMD found context, return early
+        return context;
+      }
+    } catch {
+      // QMD failed, fall through to file-based extraction
+    }
+  }
+
+  // Fallback: Read from files
   try {
     // Read recent memory files
     const memDir = path.join(workspaceDir, "memory");
@@ -304,7 +355,11 @@ const significancePlugin = {
           // Add task-aware check-in context (only outside sleep hours)
           if (cfg.checkIns && !isInSleepHours(cfg.sleepStart, cfg.sleepEnd)) {
             const timeOfDay = getTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
-            const recentContext = await getRecentContext(workspaceDir);
+            const recentContext = await getRecentContext(workspaceDir, {
+              useQmd: cfg.useQmd,
+              config: api.config,
+              agentId: "bernard",
+            });
             const gaps = await detectGaps(workspaceDir);
             const checkInPrompt = generateCheckInPrompt(timeOfDay, recentContext, gaps);
             if (checkInPrompt) {
@@ -399,7 +454,16 @@ const significancePlugin = {
         const user = await fs.stat(path.join(workspaceDir, "USER.md")).catch(() => null);
         const timeOfDay = getTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
         const inSleep = isInSleepHours(cfg.sleepStart, cfg.sleepEnd);
-        const context = await getRecentContext(workspaceDir);
+        const context = await getRecentContext(workspaceDir, {
+          useQmd: cfg.useQmd,
+          config: api.config,
+          agentId: "bernard",
+        });
+        
+        // Get idle state for proactive check-in info
+        const stateDir = api.resolvePath("~/.openclaw/state");
+        const idleState = await loadIdleState(stateDir).catch(() => null);
+        const inLearning = idleState ? isInLearningMode(idleState) : false;
         
         console.log("Significance Status");
         console.log("=".repeat(40));
@@ -407,7 +471,15 @@ const significancePlugin = {
         console.log(`USER.md: ${user ? "exists" : "missing"}`);
         console.log(`Time of day: ${timeOfDay}`);
         console.log(`Check-ins: ${inSleep ? "OFF (sleep hours)" : "ON"}`);
-        console.log(`Sleep hours: ${cfg.sleepStart}:00 - ${cfg.sleepEnd}:00`);
+        console.log(`Sleep hours: ${cfg.sleepStart} - ${cfg.sleepEnd}`);
+        console.log(`Proactive: ${cfg.proactiveCheckIns ? "ON" : "OFF"}`);
+        console.log(`QMD search: ${cfg.useQmd ? "ON" : "OFF"}`);
+        console.log(`Mode: ${inLearning ? "Learning (2h threshold)" : "Mature (4h threshold)"}`);
+        if (idleState) {
+          const idleMins = Math.round((Date.now() - idleState.lastInteractionMs) / 60000);
+          console.log(`Last interaction: ${idleMins} minutes ago`);
+          console.log(`Check-ins sent: ${idleState.checkInCount}`);
+        }
         if (context.lastTasks.length > 0) {
           console.log(`Recent tasks: ${context.lastTasks.join(", ")}`);
         }
@@ -434,16 +506,21 @@ const significancePlugin = {
         
         if (timeOfDay === "sleep") {
           console.log("\n[SLEEP HOURS] Check-ins disabled");
-          console.log(`Active hours: ${cfg.sleepEnd}:00 - ${cfg.sleepStart}:00`);
+          console.log(`Active hours: ${cfg.sleepEnd} - ${cfg.sleepStart}`);
           return;
         }
         
-        const context = await getRecentContext(workspaceDir);
+        const context = await getRecentContext(workspaceDir, {
+          useQmd: cfg.useQmd,
+          config: api.config,
+          agentId: "bernard",
+        });
         const gaps = await detectGaps(workspaceDir);
         const prompt = generateCheckInPrompt(timeOfDay, context, gaps);
         
         console.log(`\n[${timeOfDay.toUpperCase()}] Check-in Context`);
         console.log("-".repeat(40));
+        console.log(`Source: ${cfg.useQmd ? "QMD semantic search" : "file-based"}`);
         if (prompt) {
           console.log(prompt);
         } else {
@@ -452,7 +529,11 @@ const significancePlugin = {
       });
 
       sig.command("tasks").description("Show tracked tasks and threads").action(async () => {
-        const context = await getRecentContext(workspaceDir);
+        const context = await getRecentContext(workspaceDir, {
+          useQmd: cfg.useQmd,
+          config: api.config,
+          agentId: "bernard",
+        });
         
         console.log("\nTask Context");
         console.log("=".repeat(40));
@@ -487,13 +568,137 @@ const significancePlugin = {
       });
     }, { commands: ["significance"] });
 
+    // ========================================================================
+    // BACKGROUND SERVICE - Proactive Check-ins
+    // ========================================================================
+
+    let checkInterval: NodeJS.Timeout | null = null;
+
     api.registerService({
       id: "significance",
-      start: () => api.logger.info("significance: started"),
-      stop: () => api.logger.info("significance: stopped"),
+      start: async (ctx) => {
+        api.logger.info("significance: started");
+
+        if (!cfg.proactiveCheckIns) {
+          api.logger.info("significance: proactive check-ins disabled");
+          return;
+        }
+
+        const stateDir = ctx.stateDir;
+
+        // Start periodic idle check
+        checkInterval = setInterval(async () => {
+          try {
+            const state = await loadIdleState(stateDir);
+
+            // Determine threshold based on learning mode
+            const inLearning = isInLearningMode(state);
+            const threshold = inLearning
+              ? cfg.learningIdleThresholdMs
+              : cfg.matureIdleThresholdMs;
+
+            const shouldSend = shouldSendCheckIn({
+              state,
+              idleThresholdMs: threshold,
+              sleepStart: cfg.sleepStart,
+              sleepEnd: cfg.sleepEnd,
+            });
+
+            if (!shouldSend) {
+              return;
+            }
+
+            api.logger.info("significance: idle threshold reached, triggering check-in");
+
+            // Get context for check-in
+            const recentContext = await getRecentContext(workspaceDir, {
+              useQmd: cfg.useQmd,
+              config: api.config,
+              agentId: "bernard",
+            });
+            const gaps = await detectGaps(workspaceDir);
+            const timeOfDay = getIdleTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
+            
+            // Generate check-in prompt
+            const prompt = generateCheckInPrompt(
+              timeOfDay === "night" ? "sleep" : timeOfDay,
+              recentContext,
+              gaps,
+            );
+
+            if (prompt) {
+              // Trigger check-in via system event
+              await triggerProactiveCheckIn(ctx, prompt);
+              
+              // Update state
+              state.lastCheckInMs = Date.now();
+              state.checkInCount += 1;
+              await saveIdleState(stateDir, state);
+              
+              api.logger.info(`significance: check-in #${state.checkInCount} triggered`);
+            }
+          } catch (err) {
+            api.logger.warn(`significance: idle check failed: ${String(err)}`);
+          }
+        }, cfg.checkIntervalMs);
+      },
+      stop: async () => {
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          checkInterval = null;
+        }
+        api.logger.info("significance: stopped");
+      },
+    });
+
+    // Update last interaction time on agent_end
+    api.on("agent_end", async (_event, _ctx) => {
+      if (!cfg.proactiveCheckIns) return;
+      try {
+        const stateDir = api.resolvePath("~/.openclaw/state");
+        const state = await loadIdleState(stateDir);
+        state.lastInteractionMs = Date.now();
+        await saveIdleState(stateDir, state);
+      } catch {
+        // Fail silently
+      }
     });
   },
 };
+
+// ============================================================================
+// Proactive Check-in Delivery
+// ============================================================================
+
+async function triggerProactiveCheckIn(
+  ctx: { config: unknown; stateDir: string; logger: { info: (msg: string) => void; warn: (msg: string) => void } },
+  message: string,
+): Promise<void> {
+  // Use OpenClaw's system event to trigger an agent turn
+  // This will route through the configured channel (Telegram, Discord, etc.)
+  try {
+    const { enqueueSystemEvent } = await import("../../src/infra/system-events.js");
+    
+    await enqueueSystemEvent({
+      kind: "agentTurn",
+      message,
+      channel: "last", // Send to last-used channel
+      deliver: true,
+    });
+    
+    ctx.logger.info("significance: check-in queued for delivery");
+  } catch (err) {
+    ctx.logger.warn(`significance: could not enqueue check-in: ${String(err)}`);
+    
+    // Fallback: try cron-based delivery
+    try {
+      // Log for manual testing
+      ctx.logger.info(`significance: check-in message: ${message.slice(0, 100)}...`);
+    } catch {
+      // Final fallback
+    }
+  }
+}
 
 // ============================================================================
 // Analysis Functions
