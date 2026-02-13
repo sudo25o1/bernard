@@ -68,7 +68,7 @@ And because it's explicit, you can see what developed. Fix what got misread. Tak
 
 **Compression Routing**: Insights go to the right place. Facts → USER.md. The dynamic → RELATIONAL.md.
 
-**The 85% Principle**: Perfect recall isn't necessary. Rapid reconstruction to 85% of relationship state is enough for continuity.
+**Continuity over perfection**: Perfect recall isn't necessary. Enough context to maintain the relationship is.
 
 ## The Onboarding
 

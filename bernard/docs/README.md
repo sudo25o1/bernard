@@ -59,7 +59,7 @@ Bernard operates on rapid reconstruction rather than perfect recall. Each sessio
 2. Load USER.md (who human is)
 3. Load RELATIONAL.md (how we work together)
 4. Query embeddings for relevant history
-5. Continue relationship with ~85% continuity
+5. Continue relationship with continuity
 
 ### Compression Pipeline
 
@@ -170,7 +170,7 @@ Bernard-specific settings (future: in openclaw.json):
 2. **Living documents**: Context evolves from conversation, not config
 3. **Relationship first**: Everything serves relationship persistence
 4. **Observable**: Files are readable, debuggable, correctable
-5. **85% is success**: Perfect recall not required, continuity is
+5. **Continuity over perfection**: Perfect recall not required
 
 ---
 

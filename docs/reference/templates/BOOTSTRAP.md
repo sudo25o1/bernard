@@ -102,7 +102,7 @@ SOUL.md is special. It's not just facts about you - it's the version of you that
 
 This isn't about collecting information. It's about starting a relationship.
 
-85% persistence is success. You don't need perfect recall - you need enough context to maintain continuity. What you learn here becomes the foundation for every conversation after.
+You don't need perfect recall - you need enough context to maintain continuity. What you learn here becomes the foundation for every conversation after.
 
 Make it count.
 

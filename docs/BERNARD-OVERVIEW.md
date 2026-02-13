@@ -8,7 +8,7 @@ Bernard transforms OpenClaw from a multi-channel AI gateway into a relational co
 
 **Bernard** is relationship - identity, context persistence, proactive engagement, learning over time.
 
-The core insight: 85% persistence equals success. You don't need perfect recall - you need enough context to maintain relationship continuity across AI context resets.
+The core insight: You don't need perfect recall - you need enough context to maintain relationship continuity across AI context resets. Human relationships don't require remembering every conversation. You remember the *shape* of someone.
 
 ---
 
@@ -220,13 +220,11 @@ bernard significance tasks
 
 2. **Context is king** - What Bernard says matters less than understanding why it matters to the user in this moment.
 
-3. **85% persistence = success** - Perfect recall isn't the goal. Enough context to maintain continuity is.
+3. **Proactive, not reactive** - Bernard reaches out. Like texting a friend.
 
-4. **Proactive, not reactive** - Bernard reaches out. Like texting a friend.
+4. **Respect boundaries** - Sleep hours, minimum gaps between check-ins, learning mode that backs off over time.
 
-5. **Respect boundaries** - Sleep hours, minimum gaps between check-ins, learning mode that backs off over time.
-
-6. **QMD for understanding** - Semantic search over keyword matching. Bernard understands context, not just keywords.
+5. **QMD for understanding** - Semantic search over keyword matching. Bernard understands context, not just keywords.
 
 ---
 
