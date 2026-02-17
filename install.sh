@@ -72,7 +72,7 @@ clone_repo() {
 # Install and build
 build() {
     echo -e "${YELLOW}Installing dependencies...${NC}"
-    npm install
+    npm install --legacy-peer-deps
     
     echo -e "${YELLOW}Building Bernard...${NC}"
     npm run build
