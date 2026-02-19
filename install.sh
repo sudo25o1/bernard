@@ -95,9 +95,13 @@ link() {
 # Initialize QMD semantic search index
 setup_qmd() {
     if ! command -v qmd &> /dev/null; then
-        echo -e "${YELLOW}qmd not found — skipping semantic index setup.${NC}"
-        echo -e "${YELLOW}Install with: npm install -g @tobilu/qmd${NC}"
-        return
+        echo -e "${YELLOW}Installing QMD semantic search...${NC}"
+        npm install -g @tobilu/qmd 2>/dev/null || pnpm add -g @tobilu/qmd 2>/dev/null || true
+        if ! command -v qmd &> /dev/null; then
+            echo -e "${YELLOW}QMD install failed — skipping semantic index setup.${NC}"
+            echo -e "${YELLOW}Install manually with: npm install -g @tobilu/qmd${NC}"
+            return
+        fi
     fi
 
     echo -e "${YELLOW}Initializing QMD semantic index...${NC}"
