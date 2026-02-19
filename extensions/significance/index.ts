@@ -16,7 +16,6 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { extractCombinedContext, type QmdContextResult } from "./src/qmd-context.js";
 import {
   loadIdleState,
   saveIdleState,
@@ -25,6 +24,7 @@ import {
   getTimeOfDay as getIdleTimeOfDay,
   type IdleState,
 } from "./src/idle-service.js";
+import { extractCombinedContext, type QmdContextResult } from "./src/qmd-context.js";
 
 // ============================================================================
 // Types
@@ -94,7 +94,7 @@ function getTimeOfDay(sleepStart: string | number, sleepEnd: string | number): T
   const hour = new Date().getHours();
   const startHour = parseTimeToHour(sleepStart);
   const endHour = parseTimeToHour(sleepEnd);
-  
+
   // Check sleep hours (handles wraparound like 23-7)
   if (startHour <= endHour) {
     // Simple case: sleep from 0-8
@@ -103,7 +103,7 @@ function getTimeOfDay(sleepStart: string | number, sleepEnd: string | number): T
     // Wraparound case: sleep from 23-7
     if (hour >= startHour || hour < endHour) return "sleep";
   }
-  
+
   if (hour >= 8 && hour < 12) return "morning";
   if (hour >= 12 && hour < 18) return "afternoon";
   return "evening";
@@ -132,7 +132,7 @@ async function getRecentContext(
         agentId: cfg.agentId || "bernard",
         workspaceDir,
       });
-      
+
       if (qmdContext.recentTasks.length > 0 || qmdContext.openThreads.length > 0) {
         context.lastTasks = qmdContext.recentTasks;
         context.openThreads = qmdContext.openThreads;
@@ -185,7 +185,11 @@ async function getRecentContext(
   return context;
 }
 
-function generateCheckInPrompt(timeOfDay: TimeOfDay, context: RecentContext, gaps: Gap[]): string | null {
+function generateCheckInPrompt(
+  timeOfDay: TimeOfDay,
+  context: RecentContext,
+  gaps: Gap[],
+): string | null {
   // No check-ins during sleep hours
   if (timeOfDay === "sleep") return null;
 
@@ -232,7 +236,7 @@ function generateCheckInPrompt(timeOfDay: TimeOfDay, context: RecentContext, gap
   return `<check-in-context>
 Time: ${timeOfDay}
 Tone: ${toneGuidance}
-${parts.length > 0 ? "\nContext:\n" + parts.map(p => `- ${p}`).join("\n") : ""}
+${parts.length > 0 ? "\nContext:\n" + parts.map((p) => `- ${p}`).join("\n") : ""}
 
 Focus: ${checkInFocus}
 
@@ -241,10 +245,14 @@ If there's recent task context, reference it specifically. Be a partner, not a g
 </check-in-context>`;
 }
 
-async function recordTaskContext(workspaceDir: string, tasks: string[], threads: string[]): Promise<void> {
+async function recordTaskContext(
+  workspaceDir: string,
+  tasks: string[],
+  threads: string[],
+): Promise<void> {
   const sigDir = path.join(workspaceDir, ".significance");
   await fs.mkdir(sigDir, { recursive: true });
-  
+
   const tasksFile = path.join(sigDir, "tasks.json");
   let existing: Record<string, unknown> = {};
   try {
@@ -268,8 +276,14 @@ async function recordTaskContext(workspaceDir: string, tasks: string[], threads:
 // ============================================================================
 
 const EXPLICIT_MARKERS = [
-  "really important", "significant", "critical", "this is important",
-  "remember this", "don't forget", "this matters", "pay attention",
+  "really important",
+  "significant",
+  "critical",
+  "this is important",
+  "remember this",
+  "don't forget",
+  "this matters",
+  "pay attention",
 ];
 
 const RELATIONAL_PATTERNS = [
@@ -394,7 +408,7 @@ const significancePlugin = {
         const moments = detectSignificantMoments(text);
         const relationalUpdates = detectRelationalPatterns(text);
         const userUpdates = detectIdentityPatterns(text);
-        
+
         // Extract tasks and open threads for check-in context
         const tasks = extractTasks(text);
         const threads = extractThreads(text);
@@ -417,7 +431,9 @@ const significancePlugin = {
         // Always record task context for check-ins
         if (tasks.length > 0 || threads.length > 0) {
           await recordTaskContext(workspaceDir, tasks, threads);
-          api.logger.info?.(`significance: recorded ${tasks.length} tasks, ${threads.length} threads`);
+          api.logger.info?.(
+            `significance: recorded ${tasks.length} tasks, ${threads.length} threads`,
+          );
         }
       } catch (err) {
         api.logger.warn(`significance: analysis failed: ${String(err)}`);
@@ -446,127 +462,138 @@ const significancePlugin = {
     // CLI Commands
     // ========================================================================
 
-    api.registerCli(({ program }) => {
-      const sig = program.command("significance").description("Significance commands");
+    api.registerCli(
+      ({ program }) => {
+        const sig = program.command("significance").description("Significance commands");
 
-      sig.command("status").action(async () => {
-        const rel = await fs.stat(path.join(workspaceDir, "RELATIONAL.md")).catch(() => null);
-        const user = await fs.stat(path.join(workspaceDir, "USER.md")).catch(() => null);
-        const timeOfDay = getTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
-        const inSleep = isInSleepHours(cfg.sleepStart, cfg.sleepEnd);
-        const context = await getRecentContext(workspaceDir, {
-          useQmd: cfg.useQmd,
-          config: api.config,
-          agentId: "bernard",
-        });
-        
-        // Get idle state for proactive check-in info
-        const stateDir = api.resolvePath("~/.openclaw/state");
-        const idleState = await loadIdleState(stateDir).catch(() => null);
-        const inLearning = idleState ? isInLearningMode(idleState) : false;
-        
-        console.log("Significance Status");
-        console.log("=".repeat(40));
-        console.log(`RELATIONAL.md: ${rel ? "exists" : "missing"}`);
-        console.log(`USER.md: ${user ? "exists" : "missing"}`);
-        console.log(`Time of day: ${timeOfDay}`);
-        console.log(`Check-ins: ${inSleep ? "OFF (sleep hours)" : "ON"}`);
-        console.log(`Sleep hours: ${cfg.sleepStart} - ${cfg.sleepEnd}`);
-        console.log(`Proactive: ${cfg.proactiveCheckIns ? "ON" : "OFF"}`);
-        console.log(`QMD search: ${cfg.useQmd ? "ON" : "OFF"}`);
-        console.log(`Mode: ${inLearning ? "Learning (2h threshold)" : "Mature (4h threshold)"}`);
-        if (idleState) {
-          const idleMins = Math.round((Date.now() - idleState.lastInteractionMs) / 60000);
-          console.log(`Last interaction: ${idleMins} minutes ago`);
-          console.log(`Check-ins sent: ${idleState.checkInCount}`);
-        }
-        if (context.lastTasks.length > 0) {
-          console.log(`Recent tasks: ${context.lastTasks.join(", ")}`);
-        }
-        if (context.openThreads.length > 0) {
-          console.log(`Open threads: ${context.openThreads.join(", ")}`);
-        }
-      });
+        sig.command("status").action(async () => {
+          const rel = await fs.stat(path.join(workspaceDir, "RELATIONAL.md")).catch(() => null);
+          const user = await fs.stat(path.join(workspaceDir, "USER.md")).catch(() => null);
+          const timeOfDay = getTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
+          const inSleep = isInSleepHours(cfg.sleepStart, cfg.sleepEnd);
+          const context = await getRecentContext(workspaceDir, {
+            useQmd: cfg.useQmd,
+            config: api.config,
+            agentId: "bernard",
+          });
 
-      sig.command("gaps").action(async () => {
-        const gaps = await detectGaps(workspaceDir);
-        if (!gaps.length) {
-          console.log("No gaps detected.");
-          return;
-        }
-        console.log(`Found ${gaps.length} gaps:\n`);
-        for (const g of gaps) {
-          console.log(`[${g.category.toUpperCase()}] ${g.description}`);
-          console.log(`  Question: "${g.suggestedQuestion}"\n`);
-        }
-      });
+          // Get idle state for proactive check-in info
+          const stateDir = api.resolvePath("~/.openclaw/state");
+          const idleState = await loadIdleState(stateDir).catch(() => null);
+          const inLearning = idleState ? isInLearningMode(idleState) : false;
 
-      sig.command("checkin").description("Generate a contextual check-in").action(async () => {
-        const timeOfDay = getTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
-        
-        if (timeOfDay === "sleep") {
-          console.log("\n[SLEEP HOURS] Check-ins disabled");
-          console.log(`Active hours: ${cfg.sleepEnd} - ${cfg.sleepStart}`);
-          return;
-        }
-        
-        const context = await getRecentContext(workspaceDir, {
-          useQmd: cfg.useQmd,
-          config: api.config,
-          agentId: "bernard",
-        });
-        const gaps = await detectGaps(workspaceDir);
-        const prompt = generateCheckInPrompt(timeOfDay, context, gaps);
-        
-        console.log(`\n[${timeOfDay.toUpperCase()}] Check-in Context`);
-        console.log("-".repeat(40));
-        console.log(`Source: ${cfg.useQmd ? "QMD semantic search" : "file-based"}`);
-        if (prompt) {
-          console.log(prompt);
-        } else {
-          console.log("No check-in context available.");
-        }
-      });
-
-      sig.command("tasks").description("Show tracked tasks and threads").action(async () => {
-        const context = await getRecentContext(workspaceDir, {
-          useQmd: cfg.useQmd,
-          config: api.config,
-          agentId: "bernard",
-        });
-        
-        console.log("\nTask Context");
-        console.log("=".repeat(40));
-        
-        if (context.lastInteraction) {
-          const hours = Math.round((Date.now() - context.lastInteraction.getTime()) / (1000 * 60 * 60));
-          console.log(`Last interaction: ${hours} hours ago`);
-        }
-        
-        if (context.lastTasks.length > 0) {
-          console.log("\nRecent Tasks:");
-          for (const t of context.lastTasks) {
-            console.log(`  - ${t}`);
+          console.log("Significance Status");
+          console.log("=".repeat(40));
+          console.log(`RELATIONAL.md: ${rel ? "exists" : "missing"}`);
+          console.log(`USER.md: ${user ? "exists" : "missing"}`);
+          console.log(`Time of day: ${timeOfDay}`);
+          console.log(`Check-ins: ${inSleep ? "OFF (sleep hours)" : "ON"}`);
+          console.log(`Sleep hours: ${cfg.sleepStart} - ${cfg.sleepEnd}`);
+          console.log(`Proactive: ${cfg.proactiveCheckIns ? "ON" : "OFF"}`);
+          console.log(`QMD search: ${cfg.useQmd ? "ON" : "OFF"}`);
+          console.log(`Mode: ${inLearning ? "Learning (2h threshold)" : "Mature (4h threshold)"}`);
+          if (idleState) {
+            const idleMins = Math.round((Date.now() - idleState.lastInteractionMs) / 60000);
+            console.log(`Last interaction: ${idleMins} minutes ago`);
+            console.log(`Check-ins sent: ${idleState.checkInCount}`);
           }
-        } else {
-          console.log("\nNo recent tasks tracked.");
-        }
-        
-        if (context.openThreads.length > 0) {
-          console.log("\nOpen Threads:");
-          for (const t of context.openThreads) {
-            console.log(`  - ${t}`);
+          if (context.lastTasks.length > 0) {
+            console.log(`Recent tasks: ${context.lastTasks.join(", ")}`);
           }
-        }
-        
-        if (context.recentDecisions.length > 0) {
-          console.log("\nRecent Decisions:");
-          for (const d of context.recentDecisions) {
-            console.log(`  - ${d}`);
+          if (context.openThreads.length > 0) {
+            console.log(`Open threads: ${context.openThreads.join(", ")}`);
           }
-        }
-      });
-    }, { commands: ["significance"] });
+        });
+
+        sig.command("gaps").action(async () => {
+          const gaps = await detectGaps(workspaceDir);
+          if (!gaps.length) {
+            console.log("No gaps detected.");
+            return;
+          }
+          console.log(`Found ${gaps.length} gaps:\n`);
+          for (const g of gaps) {
+            console.log(`[${g.category.toUpperCase()}] ${g.description}`);
+            console.log(`  Question: "${g.suggestedQuestion}"\n`);
+          }
+        });
+
+        sig
+          .command("checkin")
+          .description("Generate a contextual check-in")
+          .action(async () => {
+            const timeOfDay = getTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
+
+            if (timeOfDay === "sleep") {
+              console.log("\n[SLEEP HOURS] Check-ins disabled");
+              console.log(`Active hours: ${cfg.sleepEnd} - ${cfg.sleepStart}`);
+              return;
+            }
+
+            const context = await getRecentContext(workspaceDir, {
+              useQmd: cfg.useQmd,
+              config: api.config,
+              agentId: "bernard",
+            });
+            const gaps = await detectGaps(workspaceDir);
+            const prompt = generateCheckInPrompt(timeOfDay, context, gaps);
+
+            console.log(`\n[${timeOfDay.toUpperCase()}] Check-in Context`);
+            console.log("-".repeat(40));
+            console.log(`Source: ${cfg.useQmd ? "QMD semantic search" : "file-based"}`);
+            if (prompt) {
+              console.log(prompt);
+            } else {
+              console.log("No check-in context available.");
+            }
+          });
+
+        sig
+          .command("tasks")
+          .description("Show tracked tasks and threads")
+          .action(async () => {
+            const context = await getRecentContext(workspaceDir, {
+              useQmd: cfg.useQmd,
+              config: api.config,
+              agentId: "bernard",
+            });
+
+            console.log("\nTask Context");
+            console.log("=".repeat(40));
+
+            if (context.lastInteraction) {
+              const hours = Math.round(
+                (Date.now() - context.lastInteraction.getTime()) / (1000 * 60 * 60),
+              );
+              console.log(`Last interaction: ${hours} hours ago`);
+            }
+
+            if (context.lastTasks.length > 0) {
+              console.log("\nRecent Tasks:");
+              for (const t of context.lastTasks) {
+                console.log(`  - ${t}`);
+              }
+            } else {
+              console.log("\nNo recent tasks tracked.");
+            }
+
+            if (context.openThreads.length > 0) {
+              console.log("\nOpen Threads:");
+              for (const t of context.openThreads) {
+                console.log(`  - ${t}`);
+              }
+            }
+
+            if (context.recentDecisions.length > 0) {
+              console.log("\nRecent Decisions:");
+              for (const d of context.recentDecisions) {
+                console.log(`  - ${d}`);
+              }
+            }
+          });
+      },
+      { commands: ["significance"] },
+    );
 
     // ========================================================================
     // BACKGROUND SERVICE - Proactive Check-ins
@@ -578,6 +605,67 @@ const significancePlugin = {
       id: "significance",
       start: async (ctx) => {
         api.logger.info("significance: started");
+
+        // ====================================================================
+        // QMD INIT — Ensure agent-scoped index has collections on every start
+        // ====================================================================
+        if (cfg.useQmd) {
+          try {
+            const os = await import("node:os");
+            const { resolveStateDir } = await import("../../src/config/paths.js");
+            const { resolveAgentWorkspaceDir } = await import("../../src/agents/agent-scope.js");
+            const { execFile } = await import("node:child_process");
+            const util = await import("node:util");
+            const execFileAsync = util.promisify(execFile);
+
+            const stateDir_ = resolveStateDir(process.env, os.default.homedir);
+            const qmdDir = path.join(stateDir_, "agents", "main", "qmd");
+            const xdgConfigHome = path.join(qmdDir, "xdg-config");
+            const xdgCacheHome = path.join(qmdDir, "xdg-cache");
+            const wsDir = resolveAgentWorkspaceDir(api.config, "main");
+
+            const qmdEnv = {
+              ...process.env,
+              XDG_CONFIG_HOME: xdgConfigHome,
+              XDG_CACHE_HOME: xdgCacheHome,
+              NO_COLOR: "1",
+            };
+
+            // Add collections (idempotent — errors silently if already exists)
+            await execFileAsync(
+              "qmd",
+              ["collection", "add", wsDir, "--name", "memory-root", "--mask", "MEMORY.md"],
+              { env: qmdEnv, cwd: wsDir },
+            ).catch(() => {});
+            await execFileAsync(
+              "qmd",
+              ["collection", "add", wsDir, "--name", "memory-alt", "--mask", "memory.md"],
+              { env: qmdEnv, cwd: wsDir },
+            ).catch(() => {});
+            await execFileAsync(
+              "qmd",
+              ["collection", "add", wsDir, "--name", "memory-dir", "--mask", "**/*.md"],
+              { env: qmdEnv, cwd: wsDir },
+            ).catch(() => {});
+
+            // Update index (fast — only processes changed files)
+            await execFileAsync("qmd", ["update"], { env: qmdEnv, cwd: wsDir }).catch(
+              (err: Error) => {
+                api.logger.warn(`significance: qmd update failed: ${String(err)}`);
+              },
+            );
+
+            // Embed in background (slow — don't block startup)
+            execFile("qmd", ["embed"], { env: qmdEnv, cwd: wsDir }, (err) => {
+              if (err) api.logger.warn(`significance: qmd embed failed: ${String(err)}`);
+              else api.logger.info("significance: qmd embed complete");
+            });
+
+            api.logger.info("significance: QMD index initialized");
+          } catch (err) {
+            api.logger.warn(`significance: QMD init failed: ${String(err)}`);
+          }
+        }
 
         if (!cfg.proactiveCheckIns) {
           api.logger.info("significance: proactive check-ins disabled");
@@ -593,9 +681,7 @@ const significancePlugin = {
 
             // Determine threshold based on learning mode
             const inLearning = isInLearningMode(state);
-            const threshold = inLearning
-              ? cfg.learningIdleThresholdMs
-              : cfg.matureIdleThresholdMs;
+            const threshold = inLearning ? cfg.learningIdleThresholdMs : cfg.matureIdleThresholdMs;
 
             const shouldSend = shouldSendCheckIn({
               state,
@@ -618,7 +704,7 @@ const significancePlugin = {
             });
             const gaps = await detectGaps(workspaceDir);
             const timeOfDay = getIdleTimeOfDay(cfg.sleepStart, cfg.sleepEnd);
-            
+
             // Generate check-in prompt
             const prompt = generateCheckInPrompt(
               timeOfDay === "night" ? "sleep" : timeOfDay,
@@ -629,12 +715,12 @@ const significancePlugin = {
             if (prompt) {
               // Trigger check-in via system event
               await triggerProactiveCheckIn(ctx, prompt);
-              
+
               // Update state
               state.lastCheckInMs = Date.now();
               state.checkInCount += 1;
               await saveIdleState(stateDir, state);
-              
+
               api.logger.info(`significance: check-in #${state.checkInCount} triggered`);
             }
           } catch (err) {
@@ -671,25 +757,29 @@ const significancePlugin = {
 // ============================================================================
 
 async function triggerProactiveCheckIn(
-  ctx: { config: unknown; stateDir: string; logger: { info: (msg: string) => void; warn: (msg: string) => void } },
+  ctx: {
+    config: unknown;
+    stateDir: string;
+    logger: { info: (msg: string) => void; warn: (msg: string) => void };
+  },
   message: string,
 ): Promise<void> {
   // Use OpenClaw's system event to trigger an agent turn
   // This will route through the configured channel (Telegram, Discord, etc.)
   try {
     const { enqueueSystemEvent } = await import("../../src/infra/system-events.js");
-    
+
     await enqueueSystemEvent({
       kind: "agentTurn",
       message,
       channel: "last", // Send to last-used channel
       deliver: true,
     });
-    
+
     ctx.logger.info("significance: check-in queued for delivery");
   } catch (err) {
     ctx.logger.warn(`significance: could not enqueue check-in: ${String(err)}`);
-    
+
     // Fallback: try cron-based delivery
     try {
       // Log for manual testing
@@ -820,7 +910,7 @@ function inferField(match: string): string {
 }
 
 function extractKeyPatterns(relational: string): string | null {
-  const lines = relational.split("\n").filter(l => l.startsWith("- ") || l.startsWith("### "));
+  const lines = relational.split("\n").filter((l) => l.startsWith("- ") || l.startsWith("### "));
   if (lines.length === 0) return null;
   return lines.slice(0, 10).join("\n");
 }
@@ -846,20 +936,26 @@ async function updateRelational(dir: string, updates: string[]): Promise<void> {
   const file = path.join(dir, "RELATIONAL.md");
   let content = await fs.readFile(file, "utf-8").catch(() => defaultRelational());
   const date = new Date().toISOString().split("T")[0];
-  const block = updates.map(u => `- ${u}`).join("\n");
+  const block = updates.map((u) => `- ${u}`).join("\n");
   if (content.includes("## Growth Markers")) {
-    content = content.replace("## Growth Markers", `## Growth Markers\n\n### ${date}\n\n${block}\n`);
+    content = content.replace(
+      "## Growth Markers",
+      `## Growth Markers\n\n### ${date}\n\n${block}\n`,
+    );
   } else {
     content += `\n\n### ${date}\n\n${block}`;
   }
   await fs.writeFile(file, content);
 }
 
-async function updateUser(dir: string, updates: Array<{ field: string; value: string }>): Promise<void> {
+async function updateUser(
+  dir: string,
+  updates: Array<{ field: string; value: string }>,
+): Promise<void> {
   const file = path.join(dir, "USER.md");
   let content = await fs.readFile(file, "utf-8").catch(() => "# USER Context\n\n");
   const date = new Date().toISOString().split("T")[0];
-  const block = updates.map(u => `- **${u.field}**: ${u.value}`).join("\n");
+  const block = updates.map((u) => `- **${u.field}**: ${u.value}`).join("\n");
   content += `\n\n### Learned ${date}\n\n${block}`;
   await fs.writeFile(file, content);
 }
@@ -870,16 +966,33 @@ async function detectGaps(dir: string): Promise<Gap[]> {
   const rel = await fs.readFile(path.join(dir, "RELATIONAL.md"), "utf-8").catch(() => "");
 
   if (!user.toLowerCase().includes("name")) {
-    gaps.push({ category: "user", description: "Don't know their name", suggestedQuestion: "What should I call you?" });
+    gaps.push({
+      category: "user",
+      description: "Don't know their name",
+      suggestedQuestion: "What should I call you?",
+    });
   }
   if (!user.toLowerCase().includes("work")) {
-    gaps.push({ category: "user", description: "Don't know what they do", suggestedQuestion: "What kind of work do you do?" });
+    gaps.push({
+      category: "user",
+      description: "Don't know what they do",
+      suggestedQuestion: "What kind of work do you do?",
+    });
   }
   if (!rel.toLowerCase().includes("communication")) {
-    gaps.push({ category: "relational", description: "Don't know communication preferences", suggestedQuestion: "Do you prefer I get straight to the point, or is more context helpful?" });
+    gaps.push({
+      category: "relational",
+      description: "Don't know communication preferences",
+      suggestedQuestion: "Do you prefer I get straight to the point, or is more context helpful?",
+    });
   }
   if (!rel.toLowerCase().includes("disagree")) {
-    gaps.push({ category: "relational", description: "Don't know how to handle disagreements", suggestedQuestion: "When I think you might be heading the wrong direction, how direct should I be?" });
+    gaps.push({
+      category: "relational",
+      description: "Don't know how to handle disagreements",
+      suggestedQuestion:
+        "When I think you might be heading the wrong direction, how direct should I be?",
+    });
   }
 
   return gaps;
@@ -890,7 +1003,7 @@ async function recordGaps(dir: string, gaps: Gap[]): Promise<void> {
   await fs.mkdir(sigDir, { recursive: true });
   await fs.writeFile(
     path.join(sigDir, "gaps.json"),
-    JSON.stringify({ lastUpdated: new Date().toISOString(), gaps }, null, 2)
+    JSON.stringify({ lastUpdated: new Date().toISOString(), gaps }, null, 2),
   );
 }
 
