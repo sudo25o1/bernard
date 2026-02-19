@@ -38,6 +38,12 @@ OS="$(uname -s)"
 # ============================================================================
 
 bootstrap_macos() {
+    # Cache sudo credentials upfront so later commands don't stall
+    if [ "$(id -u)" -ne 0 ]; then
+        echo -e "${YELLOW}Some steps need sudo. Enter your password if prompted:${NC}"
+        sudo -v
+    fi
+
     # Xcode Command Line Tools (provides git, clang, make)
     if ! xcode-select -p &> /dev/null; then
         echo -e "${YELLOW}Installing Xcode Command Line Tools...${NC}"
