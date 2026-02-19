@@ -109,6 +109,73 @@ Bernard modifies OpenClaw:
 
 ---
 
+## Getting Started
+
+### Prerequisites
+
+- Node.js 22+ ([nodejs.org](https://nodejs.org))
+- pnpm (`corepack enable && corepack prepare pnpm@latest --activate`)
+
+### Quick Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sudo25o1/bernard/main/install.sh | bash
+```
+
+### Manual Install
+
+```bash
+git clone https://github.com/sudo25o1/bernard.git
+cd bernard
+pnpm install
+pnpm build
+pnpm link --global
+bernard onboard
+```
+
+### Running Bernard
+
+```bash
+# Start the gateway
+bernard gateway run
+
+# Or use the TUI
+bernard
+```
+
+On first run, Bernard auto-creates workspace files in `~/.openclaw/workspace/`:
+- `SOUL.md`, `USER.md`, `RELATIONAL.md` -- The Trio
+- `BOOTSTRAP.md` -- onboarding flow (self-deletes when relationship is established)
+- `HEARTBEAT.md` -- periodic relational checks
+
+The **significance extension** loads automatically and handles:
+- Injecting relationship context into every conversation
+- Extracting significance from conversations (updates RELATIONAL.md, USER.md)
+- Proactive check-ins after idle periods (configurable via plugin config)
+- QMD semantic search for context extraction
+
+Check status with `bernard significance status`.
+
+### Configuration
+
+Bernard uses the same config as OpenClaw (`~/.openclaw/openclaw.json`). You need at minimum a model provider configured. See [OPENCLAW.md](OPENCLAW.md) for full config reference.
+
+The significance extension config lives under `plugins.significance`:
+
+```json
+{
+  "plugins": {
+    "significance": {
+      "proactiveCheckIns": true,
+      "sleepStart": "00:00",
+      "sleepEnd": "08:00"
+    }
+  }
+}
+```
+
+---
+
 ## OpenClaw
 
 This is a fork of OpenClaw. For the base project documentation, installation, and features, see [OPENCLAW.md](OPENCLAW.md).

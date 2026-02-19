@@ -37,18 +37,23 @@ check_requirements() {
     
     if ! command -v node &> /dev/null; then
         echo -e "${RED}Error: node is required but not installed.${NC}"
-        echo "Install Node.js 18+ from https://nodejs.org"
+        echo "Install Node.js 22+ from https://nodejs.org"
         exit 1
     fi
     
-    if ! command -v npm &> /dev/null; then
-        echo -e "${RED}Error: npm is required but not installed.${NC}"
-        exit 1
+    if ! command -v pnpm &> /dev/null; then
+        echo -e "${YELLOW}pnpm not found. Installing via corepack...${NC}"
+        corepack enable && corepack prepare pnpm@latest --activate
+        if ! command -v pnpm &> /dev/null; then
+            echo -e "${RED}Error: pnpm is required but could not be installed.${NC}"
+            echo "Install pnpm: https://pnpm.io/installation"
+            exit 1
+        fi
     fi
     
     NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VERSION" -lt 18 ]; then
-        echo -e "${RED}Error: Node.js 18+ required. You have $(node -v)${NC}"
+    if [ "$NODE_VERSION" -lt 22 ]; then
+        echo -e "${RED}Error: Node.js 22+ required. You have $(node -v)${NC}"
         exit 1
     fi
     
@@ -72,10 +77,10 @@ clone_repo() {
 # Install and build
 build() {
     echo -e "${YELLOW}Installing dependencies...${NC}"
-    npm install --legacy-peer-deps
+    pnpm install
     
     echo -e "${YELLOW}Building Bernard...${NC}"
-    npm run build
+    pnpm build
     
     echo -e "${GREEN}Build complete.${NC}"
 }
@@ -83,55 +88,8 @@ build() {
 # Link globally
 link() {
     echo -e "${YELLOW}Linking bernard command...${NC}"
-    npm link
+    pnpm link --global
     echo -e "${GREEN}Bernard command available globally.${NC}"
-}
-
-# Setup Bernard watcher LaunchAgent (macOS)
-setup_watcher() {
-    if [[ "$(uname)" != "Darwin" ]]; then
-        return
-    fi
-    
-    echo -e "${YELLOW}Setting up Bernard watcher...${NC}"
-    
-    mkdir -p ~/Library/LaunchAgents
-    mkdir -p "$INSTALL_DIR/logs"
-    mkdir -p "$INSTALL_DIR/raw"
-    mkdir -p "$INSTALL_DIR/daily"
-    mkdir -p "$INSTALL_DIR/.state"
-    
-    cat > ~/Library/LaunchAgents/com.bernard.watcher.plist << PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.bernard.watcher</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/bin/python3</string>
-        <string>${HOME}/bernard/bernard-memory/bernard.py</string>
-        <string>watch</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>${HOME}/bernard</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>${HOME}/bernard/logs/watcher.log</string>
-    <key>StandardErrorPath</key>
-    <string>${HOME}/bernard/logs/watcher.error.log</string>
-</dict>
-</plist>
-PLIST
-    
-    launchctl unload ~/Library/LaunchAgents/com.bernard.watcher.plist 2>/dev/null || true
-    launchctl load ~/Library/LaunchAgents/com.bernard.watcher.plist
-    
-    echo -e "${GREEN}Bernard watcher running.${NC}"
 }
 
 # Initialize QMD semantic search index
@@ -184,7 +142,6 @@ main() {
     clone_repo
     build
     link
-    setup_watcher
     setup_qmd
     onboard
 }

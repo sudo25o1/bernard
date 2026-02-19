@@ -11,13 +11,32 @@
       "help": "Automatically inject relevant relationship context before responses"
     },
     "gapDetection": {
-      "label": "Gap Detection", 
+      "label": "Gap Detection",
       "help": "Detect and track gaps in relationship understanding"
+    },
+    "checkIns": {
+      "label": "Check-In Context",
+      "help": "Inject task-aware check-in context before responses"
+    },
+    "proactiveCheckIns": {
+      "label": "Proactive Check-Ins",
+      "help": "Enable background idle detection and proactive check-ins"
+    },
+    "useQmd": {
+      "label": "QMD Semantic Search",
+      "help": "Use QMD semantic search for context extraction (falls back to file-based)"
+    },
+    "sleepStart": {
+      "label": "Sleep Start",
+      "help": "Start of quiet hours (HH:MM or hour number)"
+    },
+    "sleepEnd": {
+      "label": "Sleep End",
+      "help": "End of quiet hours (HH:MM or hour number)"
     }
   },
   "configSchema": {
     "type": "object",
-    "additionalProperties": false,
     "properties": {
       "enabled": {
         "type": "boolean",
@@ -30,6 +49,38 @@
       "gapDetection": {
         "type": "boolean",
         "default": true
+      },
+      "checkIns": {
+        "type": "boolean",
+        "default": true
+      },
+      "proactiveCheckIns": {
+        "type": "boolean",
+        "default": true
+      },
+      "useQmd": {
+        "type": "boolean",
+        "default": true
+      },
+      "sleepStart": {
+        "type": "string",
+        "default": "00:00"
+      },
+      "sleepEnd": {
+        "type": "string",
+        "default": "08:00"
+      },
+      "checkIntervalMs": {
+        "type": "number",
+        "default": 1800000
+      },
+      "learningIdleThresholdMs": {
+        "type": "number",
+        "default": 7200000
+      },
+      "matureIdleThresholdMs": {
+        "type": "number",
+        "default": 14400000
       }
     }
   }

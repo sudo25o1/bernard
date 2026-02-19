@@ -116,12 +116,11 @@ sleepStart: "22:00", sleepEnd: "07:00"  // 10 PM to 7 AM
 Check-ins route through OpenClaw's existing channel infrastructure:
 
 ```typescript
-await enqueueSystemEvent({
-  kind: "agentTurn",
-  message: checkInPrompt,
-  channel: "last",  // Routes to last-used channel
-  deliver: true,
-});
+const { enqueueSystemEvent } = await import("../../src/infra/system-events.js");
+const { resolveAgentMainSessionKey } = await import("../../src/config/sessions.js");
+
+const sessionKey = resolveAgentMainSessionKey({ cfg, agentId: "bernard" });
+enqueueSystemEvent(checkInPrompt, { sessionKey });
 ```
 
 This means check-ins go to whatever channel the user has configured (Telegram, Discord, WhatsApp, Signal, etc.) without any channel-specific code in the extension.
@@ -208,6 +207,7 @@ bernard significance tasks
 | `~/.openclaw/workspace/USER.md` | User identity/preferences |
 | `~/.openclaw/workspace/memory/YYYY-MM-DD.md` | Daily significant moments |
 | `~/.openclaw/workspace/.significance/tasks.json` | Recent tasks/threads |
+| `~/.openclaw/workspace/.significance/gaps.json` | Detected knowledge gaps |
 | `~/.openclaw/state/significance-idle.json` | Idle tracking state |
 
 ## Design Principles
