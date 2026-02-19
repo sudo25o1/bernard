@@ -25,24 +25,127 @@ echo -e "${NC}${BOLD}  Ever-persistent AI relationship${NC}"
 echo ""
 
 INSTALL_DIR="$HOME/bernard"
+OS="$(uname -s)"
 
-# Check for required tools
+# ============================================================================
+# Platform bootstrap -- install system-level deps before anything else
+# ============================================================================
+
+bootstrap_macos() {
+    # Xcode Command Line Tools (provides git, clang, make)
+    if ! xcode-select -p &> /dev/null; then
+        echo -e "${YELLOW}Installing Xcode Command Line Tools...${NC}"
+        echo -e "${YELLOW}A system dialog may appear -- click Install and wait.${NC}"
+        xcode-select --install
+        # Wait for install to finish
+        until xcode-select -p &> /dev/null; do
+            sleep 5
+        done
+        echo -e "${GREEN}Xcode CLT installed.${NC}"
+    fi
+
+    # Homebrew
+    if ! command -v brew &> /dev/null; then
+        echo -e "${YELLOW}Installing Homebrew...${NC}"
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        # Add brew to PATH for this session
+        if [ -f /opt/homebrew/bin/brew ]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        elif [ -f /usr/local/bin/brew ]; then
+            eval "$(/usr/local/bin/brew shellenv)"
+        fi
+        echo -e "${GREEN}Homebrew installed.${NC}"
+    fi
+
+    # Node.js
+    if ! command -v node &> /dev/null; then
+        echo -e "${YELLOW}Installing Node.js...${NC}"
+        brew install node
+        echo -e "${GREEN}Node.js installed.${NC}"
+    fi
+}
+
+bootstrap_linux() {
+    # Detect package manager
+    if command -v apt-get &> /dev/null; then
+        PKG="sudo apt-get install -y"
+    elif command -v dnf &> /dev/null; then
+        PKG="sudo dnf install -y"
+    elif command -v pacman &> /dev/null; then
+        PKG="sudo pacman -S --noconfirm"
+    else
+        echo -e "${RED}Could not detect package manager (apt/dnf/pacman).${NC}"
+        echo "Install manually: git, Node.js 22+, build tools (gcc, g++, make), python3"
+        exit 1
+    fi
+
+    # Build tools + git
+    if ! command -v gcc &> /dev/null || ! command -v git &> /dev/null; then
+        echo -e "${YELLOW}Installing build tools and git...${NC}"
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update
+            $PKG build-essential git python3 curl
+        elif command -v dnf &> /dev/null; then
+            $PKG gcc gcc-c++ make git python3 curl
+        elif command -v pacman &> /dev/null; then
+            $PKG base-devel git python curl
+        fi
+        echo -e "${GREEN}Build tools installed.${NC}"
+    fi
+
+    # Node.js
+    if ! command -v node &> /dev/null; then
+        echo -e "${YELLOW}Installing Node.js 22...${NC}"
+        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+        sudo apt-get install -y nodejs 2>/dev/null || $PKG nodejs
+        echo -e "${GREEN}Node.js installed.${NC}"
+    fi
+}
+
+bootstrap() {
+    echo -e "${YELLOW}Bootstrapping system dependencies...${NC}"
+
+    case "$OS" in
+        Darwin) bootstrap_macos ;;
+        Linux)  bootstrap_linux ;;
+        *)
+            echo -e "${RED}Unsupported OS: $OS${NC}"
+            echo "Bernard supports macOS and Linux."
+            exit 1
+            ;;
+    esac
+
+    echo -e "${GREEN}System dependencies ready.${NC}"
+}
+
+# ============================================================================
+# Check and install remaining tools
+# ============================================================================
+
 check_requirements() {
     echo -e "${YELLOW}Checking requirements...${NC}"
-    
+
     if ! command -v git &> /dev/null; then
         echo -e "${RED}Error: git is required but not installed.${NC}"
         exit 1
     fi
-    
+
     if ! command -v node &> /dev/null; then
         echo -e "${RED}Error: node is required but not installed.${NC}"
         echo "Install Node.js 22+ from https://nodejs.org"
         exit 1
     fi
-    
+
+    NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+    if [ "$NODE_VERSION" -lt 22 ]; then
+        echo -e "${RED}Error: Node.js 22+ required. You have $(node -v)${NC}"
+        echo -e "${YELLOW}Update with: brew install node (macOS) or see https://nodejs.org${NC}"
+        exit 1
+    fi
+
+    # pnpm via corepack
     if ! command -v pnpm &> /dev/null; then
-        echo -e "${YELLOW}pnpm not found. Installing via corepack...${NC}"
+        echo -e "${YELLOW}Installing pnpm via corepack...${NC}"
         corepack enable && corepack prepare pnpm@latest --activate
         if ! command -v pnpm &> /dev/null; then
             echo -e "${RED}Error: pnpm is required but could not be installed.${NC}"
@@ -50,17 +153,14 @@ check_requirements() {
             exit 1
         fi
     fi
-    
-    NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VERSION" -lt 22 ]; then
-        echo -e "${RED}Error: Node.js 22+ required. You have $(node -v)${NC}"
-        exit 1
-    fi
-    
+
     echo -e "${GREEN}Requirements met.${NC}"
 }
 
-# Clone or update repo
+# ============================================================================
+# Clone, build, link
+# ============================================================================
+
 clone_repo() {
     if [ -d "$INSTALL_DIR" ]; then
         echo -e "${YELLOW}Bernard directory exists. Updating...${NC}"
@@ -74,31 +174,32 @@ clone_repo() {
     echo -e "${GREEN}Repository ready.${NC}"
 }
 
-# Install and build
 build() {
     echo -e "${YELLOW}Installing dependencies...${NC}"
     pnpm install
-    
+
     echo -e "${YELLOW}Building Bernard...${NC}"
     pnpm build
-    
+
     echo -e "${GREEN}Build complete.${NC}"
 }
 
-# Link globally
 link() {
     echo -e "${YELLOW}Linking bernard command...${NC}"
     pnpm link --global
     echo -e "${GREEN}Bernard command available globally.${NC}"
 }
 
-# Initialize QMD semantic search index
+# ============================================================================
+# QMD semantic search
+# ============================================================================
+
 setup_qmd() {
     if ! command -v qmd &> /dev/null; then
         echo -e "${YELLOW}Installing QMD semantic search...${NC}"
         npm install -g @tobilu/qmd 2>/dev/null || pnpm add -g @tobilu/qmd 2>/dev/null || true
         if ! command -v qmd &> /dev/null; then
-            echo -e "${YELLOW}QMD install failed — skipping semantic index setup.${NC}"
+            echo -e "${YELLOW}QMD install failed -- skipping semantic index setup.${NC}"
             echo -e "${YELLOW}Install manually with: npm install -g @tobilu/qmd${NC}"
             return
         fi
@@ -122,7 +223,7 @@ setup_qmd() {
     # Index files (fast)
     qmd update 2>/dev/null || true
 
-    # Embed in background (slow — don't block install)
+    # Embed in background (slow -- don't block install)
     qmd embed &
 
     unset XDG_CONFIG_HOME
@@ -131,7 +232,10 @@ setup_qmd() {
     echo -e "${GREEN}QMD index initialized.${NC}"
 }
 
-# Run onboarding
+# ============================================================================
+# Onboarding
+# ============================================================================
+
 onboard() {
     echo ""
     echo -e "${BLUE}${BOLD}Starting Bernard onboarding...${NC}"
@@ -140,8 +244,12 @@ onboard() {
     bernard onboard
 }
 
+# ============================================================================
 # Main
+# ============================================================================
+
 main() {
+    bootstrap
     check_requirements
     clone_repo
     build
