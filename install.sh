@@ -1,7 +1,12 @@
 #!/bin/bash
 
 # Bernard Installer
-# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/sudo25o1/bernard/main/install.sh)
+#
+# Usage (pick one):
+#   bash <(curl -fsSL https://raw.githubusercontent.com/sudo25o1/bernard/main/install.sh)
+#   curl -fsSL https://raw.githubusercontent.com/sudo25o1/bernard/main/install.sh -o /tmp/bi.sh && bash /tmp/bi.sh
+#
+# NOTE: "curl ... | bash" won't work — sudo needs an interactive terminal.
 
 set -e
 
@@ -13,10 +18,13 @@ RED='\033[0;31m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Ensure stdin is the terminal (not a pipe), so sudo can prompt for a password.
-# If piped via "curl ... | bash", re-exec with /dev/tty as stdin.
+# Bail early if stdin isn't a terminal — sudo prompts won't work.
 if [ ! -t 0 ]; then
-    exec < /dev/tty
+    echo "Error: This installer needs an interactive terminal for sudo."
+    echo ""
+    echo "Run with:"
+    echo "  bash <(curl -fsSL https://raw.githubusercontent.com/sudo25o1/bernard/main/install.sh)"
+    exit 1
 fi
 
 echo ""

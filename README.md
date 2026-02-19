@@ -119,7 +119,7 @@ Bernard modifies OpenClaw:
 ### Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sudo25o1/bernard/main/install.sh | bash
+bash <(curl -fsSL https://raw.githubusercontent.com/sudo25o1/bernard/main/install.sh)
 ```
 
 ### Manual Install
