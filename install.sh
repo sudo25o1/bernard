@@ -134,6 +134,41 @@ PLIST
     echo -e "${GREEN}Bernard watcher running.${NC}"
 }
 
+# Initialize QMD semantic search index
+setup_qmd() {
+    if ! command -v qmd &> /dev/null; then
+        echo -e "${YELLOW}qmd not found — skipping semantic index setup.${NC}"
+        echo -e "${YELLOW}Install with: npm install -g @tobilu/qmd${NC}"
+        return
+    fi
+
+    echo -e "${YELLOW}Initializing QMD semantic index...${NC}"
+
+    WORKSPACE_DIR="$HOME/.openclaw/workspace"
+    QMD_STATE_DIR="$HOME/.openclaw/state/agents/main/qmd"
+
+    mkdir -p "$QMD_STATE_DIR/xdg-config" "$QMD_STATE_DIR/xdg-cache" "$WORKSPACE_DIR"
+
+    export XDG_CONFIG_HOME="$QMD_STATE_DIR/xdg-config"
+    export XDG_CACHE_HOME="$QMD_STATE_DIR/xdg-cache"
+
+    # Add collections (idempotent)
+    qmd collection add "$WORKSPACE_DIR" --name memory-root --mask "MEMORY.md" 2>/dev/null || true
+    qmd collection add "$WORKSPACE_DIR" --name memory-alt  --mask "memory.md"  2>/dev/null || true
+    qmd collection add "$WORKSPACE_DIR" --name memory-dir  --mask "**/*.md"    2>/dev/null || true
+
+    # Index files (fast)
+    qmd update 2>/dev/null || true
+
+    # Embed in background (slow — don't block install)
+    qmd embed &
+
+    unset XDG_CONFIG_HOME
+    unset XDG_CACHE_HOME
+
+    echo -e "${GREEN}QMD index initialized.${NC}"
+}
+
 # Run onboarding
 onboard() {
     echo ""
@@ -150,6 +185,7 @@ main() {
     build
     link
     setup_watcher
+    setup_qmd
     onboard
 }
 
