@@ -169,13 +169,25 @@ check_requirements() {
         exit 1
     fi
 
-    # pnpm via corepack
+    # pnpm
     if ! command -v pnpm &> /dev/null; then
-        echo -e "${YELLOW}Installing pnpm via corepack...${NC}"
-        corepack enable && corepack prepare pnpm@latest --activate
+        echo -e "${YELLOW}Installing pnpm...${NC}"
+        # Rehash PATH in case node was just installed
+        hash -r 2>/dev/null
+        # Try corepack first (ships with Node but may not be enabled)
+        if command -v corepack &> /dev/null; then
+            corepack enable && corepack prepare pnpm@latest --activate
+        fi
+        # Fallback: install pnpm standalone
         if ! command -v pnpm &> /dev/null; then
-            echo -e "${RED}Error: pnpm is required but could not be installed.${NC}"
-            echo "Install pnpm: https://pnpm.io/installation"
+            curl -fsSL https://get.pnpm.io/install.sh | sh -
+            # Add pnpm to PATH for this session
+            export PNPM_HOME="$HOME/.local/share/pnpm"
+            export PATH="$PNPM_HOME:$PATH"
+        fi
+        if ! command -v pnpm &> /dev/null; then
+            echo -e "${RED}Error: pnpm could not be installed.${NC}"
+            echo "Install manually: https://pnpm.io/installation"
             exit 1
         fi
     fi
