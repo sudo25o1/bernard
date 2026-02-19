@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Bernard Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/sudo25o1/bernard/main/install.sh | bash
+# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/sudo25o1/bernard/main/install.sh)
 
 set -e
 
@@ -12,6 +12,12 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
+
+# Ensure stdin is the terminal (not a pipe), so sudo can prompt for a password.
+# If piped via "curl ... | bash", re-exec with /dev/tty as stdin.
+if [ ! -t 0 ]; then
+    exec < /dev/tty
+fi
 
 echo ""
 echo -e "${BLUE}${BOLD}"
@@ -66,6 +72,12 @@ bootstrap_macos() {
 }
 
 bootstrap_linux() {
+    # Cache sudo credentials upfront so later commands don't stall
+    if [ "$(id -u)" -ne 0 ]; then
+        echo -e "${YELLOW}Some steps need sudo. Enter your password if prompted:${NC}"
+        sudo -v
+    fi
+
     # Detect package manager
     if command -v apt-get &> /dev/null; then
         PKG="sudo apt-get install -y"
