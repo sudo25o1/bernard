@@ -65,12 +65,27 @@ skills/research/
 
 ## Testing Status
 
-- [ ] web_search integration tested
-- [ ] QMD similarity tested
-- [ ] Topic extraction tested
-- [ ] Cron scheduling tested
-- [ ] Message delivery tested
+- [ ] web_search integration tested (needs Bernard session context)
+- [x] QMD similarity tested (BM25 keyword search, score 0-1)
+- [x] Topic extraction tested (extracts capitalized phrases + keywords)
+- [ ] Cron scheduling tested (needs Bernard session context)
+- [ ] Message delivery tested (needs Bernard session context)
 - [ ] End-to-end research flow tested
+
+### Test Results
+
+**QMD Similarity:**
+
+- `semanticSimilarity("primates", "primates consume fruit")` → 0.870 ✓
+- `semanticSimilarity("monkeys eat bananas", "primates consume fruit")` → 0.000
+- Uses BM25 keyword search (not vector search - vsearch hangs)
+- Limitation: requires keyword overlap, won't detect pure semantic similarity
+
+**Topic Extraction:**
+
+- Extracts capitalized multi-word phrases (e.g., "Amazon Rainforest Spider")
+- Extracts important keywords (6+ chars, lowercase)
+- Returns up to 10 topics per search result set
 
 ## Next Immediate Steps
 
