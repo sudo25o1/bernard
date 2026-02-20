@@ -214,7 +214,23 @@ clone_repo() {
 
 build() {
     echo -e "${YELLOW}Installing dependencies...${NC}"
-    pnpm install
+    
+    # Try pnpm install, handle corepack failures
+    if ! pnpm install 2>&1; then
+        echo -e "${YELLOW}pnpm install failed (likely corepack key mismatch). Installing pnpm standalone...${NC}"
+        curl -fsSL https://get.pnpm.io/install.sh | sh -
+        export PNPM_HOME="$HOME/.local/share/pnpm"
+        export PATH="$PNPM_HOME:$PATH"
+        hash -r 2>/dev/null
+        
+        if ! command -v pnpm &> /dev/null; then
+            echo -e "${RED}Error: pnpm standalone install failed.${NC}"
+            exit 1
+        fi
+        
+        echo -e "${YELLOW}Retrying pnpm install with standalone version...${NC}"
+        pnpm install
+    fi
 
     echo -e "${YELLOW}Building Bernard...${NC}"
     pnpm build
