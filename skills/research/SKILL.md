@@ -1,71 +1,81 @@
 # Research Skill
 
-Deep, phased research orchestration that builds comprehensive knowledge bases over time instead of surface-level quick searches.
+Deep, phased research that builds comprehensive knowledge bases over time instead of surface-level quick searches.
+
+## Current Status
+
+**Built:** Core components functional (QMD similarity, topic extraction, orchestration logic)
+**Remaining:** Session integration (wiring to web_search, cron, message tools)
 
 ## How It Works
 
-When asked to research a topic, Bernard doesn't just search and compile. Instead:
+When you say "research [topic]":
 
-**Phase 1 (Tier 1): Initial Discovery**
+### Tier 1 (immediate)
 
-- Research the core topic
-- Identify primary subtopics and related concepts
-- Store findings and spawn Tier 2 research
+- web_search for core topic
+- Extract subtopics from results
+- Store in `workspace/research/{slug}/tier1.md`
+- Schedule Tier 2 (+5 min)
 
-**Phase 2 (Tier 2): Subtopic Expansion**
+### Tier 2 (+5 minutes)
 
-- Research each subtopic discovered in Tier 1
-- Generate tertiary topics
-- Store findings and spawn Tier 3 research
+- Research each Tier 1 subtopic
+- Extract tertiary topics
+- Schedule Tier 3 (+5 min)
 
-**Phase 3 (Tier 3): Deep Dive**
+### Tier 3 (+10 minutes)
 
 - Research tertiary topics
-- Build comprehensive context on each branch
-- Store findings and trigger compilation
+- Build deep context
+- Schedule compilation (+5 min)
 
-**Phase 4: Compilation & Pruning**
+### Compilation (+15 minutes)
 
-- Use semantic similarity to prune topics that don't relate back to the original query
-- Compile remaining findings into a cohesive document
-- Deliver to the channel where research was requested
+- Load all tiers
+- Prune using QMD similarity (threshold 0.5)
+- Compile final document
+- Deliver via message tool
 
-## Time Delays
+## Time Structure
 
-Research happens in phases with 5-minute delays between tiers. This allows:
+Total: ~15 minutes
 
-- Context accumulation across multiple search iterations
-- Semantic filtering to remove irrelevant branches
-- Deep understanding instead of shallow scraping
+- Allows depth vs. speed tradeoff
+- Multiple search iterations
+- Semantic filtering removes noise
 
 ## Storage
 
-Research state is tracked in:
-
 ```
-workspace/research/{topic-slug}/
-  state.json       # Current phase, subtopics, metadata
-  tier1.md         # Tier 1 findings
-  tier2.md         # Tier 2 findings
-  tier3.md         # Tier 3 findings
-  compiled.md      # Final pruned output
+workspace/research/{slug}/
+  state.json       # Phase, topics, metadata
+  tier1.md         # Initial findings
+  tier2.md         # Subtopic expansion
+  tier3.md         # Deep dive
+  compiled.md      # Final (pruned)
 ```
 
-## Usage
+## Test Results
 
-From any session:
+**QMD Similarity (BM25 search):**
 
-```
-research [topic]
-```
+- `semanticSimilarity("primates", "primates consume fruit")` → 0.870 ✓
+- Requires keyword overlap (limitation: won't detect pure semantic similarity)
 
-Bernard will:
+**Topic Extraction:**
 
-1. Acknowledge the request
-2. Kick off Tier 1 research immediately
-3. Schedule subsequent phases via cron
-4. Message you when complete with the compiled document
+- Extracts capitalized phrases: "Amazon Rainforest Spider"
+- Extracts keywords: monkeys, amazon, rainforest
+- Returns top 10 topics
 
-## Implementation
+## Integration
 
-Core logic in `orchestrator.js` - handles phase transitions, semantic pruning, and delivery.
+See `INTEGRATION.md` for how Bernard should handle "research [topic]" in session context.
+
+## Files
+
+- `bernard-integration.mjs` - QMD similarity, topic extraction
+- `research-handler.py` - Phase execution logic
+- `STATUS.md` - Build progress
+- `INTEGRATION.md` - Session integration guide
