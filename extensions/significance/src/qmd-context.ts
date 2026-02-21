@@ -1,16 +1,20 @@
 /**
  * QMD Semantic Search for Context Extraction
- * 
- * Replaces regex-based task extraction with semantic search via QMD.
- * This provides better context understanding for check-ins.
+ *
+ * Uses the same query pattern as the native QmdMemoryManager — agentId-scoped
+ * XDG dirs and `-c` collection filters — so the significance extension queries
+ * the same index that the core memory system maintains.
  */
 
 import type { OpenClawConfig } from "../../../src/config/config.js";
-import { spawn } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import path from "node:path";
 import os from "node:os";
 import { resolveStateDir } from "../../../src/config/paths.js";
 import { resolveAgentWorkspaceDir } from "../../../src/agents/agent-scope.js";
+
+const execFileAsync = promisify(execFile);
 
 // === TYPES ===
 
@@ -21,75 +25,61 @@ export type QmdContextResult = {
   recentDecisions: string[];
 };
 
+// Default collections registered by QmdMemoryManager and the significance init block.
+// These mirror the names used in src/memory/backend-config.ts:resolveDefaultCollections()
+const DEFAULT_COLLECTIONS = ["memory-root", "memory-alt", "memory-dir"];
+
 // === QMD SEMANTIC SEARCH ===
 
 async function queryQmd(params: {
   query: string;
   cfg: OpenClawConfig;
   agentId: string;
+  collections?: string[];
   maxResults?: number;
   timeoutMs?: number;
 }): Promise<string[]> {
-  const { query, cfg, agentId, maxResults = 5, timeoutMs = 10000 } = params;
+  const {
+    query,
+    cfg,
+    agentId,
+    collections = DEFAULT_COLLECTIONS,
+    maxResults = 5,
+    timeoutMs = 10_000,
+  } = params;
 
   const stateDir = resolveStateDir(process.env, os.homedir);
   const qmdDir = path.join(stateDir, "agents", agentId, "qmd");
-  const xdgConfigHome = path.join(qmdDir, "xdg-config");
-  const xdgCacheHome = path.join(qmdDir, "xdg-cache");
 
   const env = {
     ...process.env,
-    XDG_CONFIG_HOME: xdgConfigHome,
-    XDG_CACHE_HOME: xdgCacheHome,
+    XDG_CONFIG_HOME: path.join(qmdDir, "xdg-config"),
+    XDG_CACHE_HOME: path.join(qmdDir, "xdg-cache"),
     NO_COLOR: "1",
   };
 
   const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
 
-  return new Promise((resolve) => {
-    const child = spawn("qmd", ["query", query, "--json", "-n", String(maxResults)], {
+  // Build collection filter args: -c memory-root -c memory-alt -c memory-dir
+  const collectionArgs = collections.flatMap((name) => ["-c", name]);
+
+  const args = ["query", query, "--json", "-n", String(maxResults), ...collectionArgs];
+
+  try {
+    const { stdout } = await execFileAsync("qmd", args, {
       env,
       cwd: workspaceDir,
+      timeout: timeoutMs,
     });
-
-    let stdout = "";
-
-    child.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr.on("data", () => {
-      // Ignore stderr
-    });
-
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve([]);
-    }, timeoutMs);
-
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0) {
-        resolve([]);
-        return;
-      }
-      try {
-        const results = JSON.parse(stdout);
-        const snippets = results
-          .map((r: { snippet?: string }) => r.snippet?.trim())
-          .filter(Boolean)
-          .slice(0, maxResults);
-        resolve(snippets);
-      } catch {
-        resolve([]);
-      }
-    });
-
-    child.on("error", () => {
-      clearTimeout(timer);
-      resolve([]);
-    });
-  });
+    const results = JSON.parse(stdout);
+    return results
+      .map((r: { snippet?: string; score?: number }) => r.snippet?.trim())
+      .filter(Boolean)
+      .slice(0, maxResults);
+  } catch {
+    // QMD unavailable, index empty, or timeout — fail silently
+    return [];
+  }
 }
 
 // === CONTEXT EXTRACTION VIA QMD ===
@@ -102,28 +92,24 @@ export async function extractQmdContext(params: {
 
   // Run queries in parallel for speed
   const [taskSnippets, threadSnippets, topicSnippets, decisionSnippets] = await Promise.all([
-    // Query for recent tasks/work
     queryQmd({
       query: "what was the user working on recently tasks projects building",
       cfg,
       agentId,
       maxResults: 3,
     }),
-    // Query for open/unfinished items
     queryQmd({
       query: "unfinished incomplete todo later tomorrow revisit open question",
       cfg,
       agentId,
       maxResults: 3,
     }),
-    // Query for last topic discussed
     queryQmd({
       query: "last discussion topic conversation talked about",
       cfg,
       agentId,
       maxResults: 1,
     }),
-    // Query for recent decisions
     queryQmd({
       query: "decided to use going with choice decision",
       cfg,
@@ -146,15 +132,12 @@ export async function extractCombinedContext(params: {
   cfg: OpenClawConfig;
   agentId: string;
   workspaceDir: string;
-  fallbackToRegex?: boolean;
 }): Promise<QmdContextResult> {
   const { cfg, agentId } = params;
 
   try {
-    // Try QMD first
     const qmdContext = await extractQmdContext({ cfg, agentId });
-    
-    // If QMD returned results, use them
+
     if (qmdContext.recentTasks.length > 0 || qmdContext.openThreads.length > 0) {
       return qmdContext;
     }
@@ -162,7 +145,7 @@ export async function extractCombinedContext(params: {
     // QMD failed, fall through to empty result
   }
 
-  // Return empty result - the existing regex extraction in the main file
+  // Return empty result — the file-based extraction in the main file
   // will serve as fallback if QMD returns nothing
   return {
     recentTasks: [],

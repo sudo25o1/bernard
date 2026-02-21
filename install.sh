@@ -262,7 +262,7 @@ setup_qmd() {
     echo -e "${YELLOW}Initializing QMD semantic index...${NC}"
 
     WORKSPACE_DIR="$HOME/.openclaw/workspace"
-    QMD_STATE_DIR="$HOME/.openclaw/state/agents/main/qmd"
+    QMD_STATE_DIR="$HOME/.openclaw/state/agents/bernard/qmd"
 
     mkdir -p "$QMD_STATE_DIR/xdg-config" "$QMD_STATE_DIR/xdg-cache" "$WORKSPACE_DIR"
 

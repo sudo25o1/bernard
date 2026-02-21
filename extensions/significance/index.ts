@@ -619,10 +619,10 @@ const significancePlugin = {
             const execFileAsync = util.promisify(execFile);
 
             const stateDir_ = resolveStateDir(process.env, os.default.homedir);
-            const qmdDir = path.join(stateDir_, "agents", "main", "qmd");
+            const qmdDir = path.join(stateDir_, "agents", "bernard", "qmd");
             const xdgConfigHome = path.join(qmdDir, "xdg-config");
             const xdgCacheHome = path.join(qmdDir, "xdg-cache");
-            const wsDir = resolveAgentWorkspaceDir(api.config, "main");
+            const wsDir = resolveAgentWorkspaceDir(api.config, "bernard");
 
             const qmdEnv = {
               ...process.env,
@@ -764,29 +764,25 @@ async function triggerProactiveCheckIn(
   },
   message: string,
 ): Promise<void> {
-  // Use OpenClaw's system event to trigger an agent turn
-  // This will route through the configured channel (Telegram, Discord, etc.)
+  // Enqueue text into the session queue, then wake the heartbeat runner.
+  // The heartbeat runner picks up queued system events, runs an agent turn,
+  // and delivers the reply to the last-used channel (Discord, Telegram, etc.).
   try {
     const { enqueueSystemEvent } = await import("../../src/infra/system-events.js");
+    const { requestHeartbeatNow } = await import("../../src/infra/heartbeat-wake.js");
+    const { resolveAgentMainSessionKey } = await import(
+      "../../src/config/sessions/main-session.js"
+    );
 
-    await enqueueSystemEvent({
-      kind: "agentTurn",
-      message,
-      channel: "last", // Send to last-used channel
-      deliver: true,
-    });
+    const cfg = ctx.config as import("../../src/config/config.js").OpenClawConfig;
+    const sessionKey = resolveAgentMainSessionKey({ cfg, agentId: "bernard" });
+
+    enqueueSystemEvent(message, { sessionKey });
+    requestHeartbeatNow({ reason: "significance:check-in" });
 
     ctx.logger.info("significance: check-in queued for delivery");
   } catch (err) {
     ctx.logger.warn(`significance: could not enqueue check-in: ${String(err)}`);
-
-    // Fallback: try cron-based delivery
-    try {
-      // Log for manual testing
-      ctx.logger.info(`significance: check-in message: ${message.slice(0, 100)}...`);
-    } catch {
-      // Final fallback
-    }
   }
 }
 
@@ -909,10 +905,65 @@ function inferField(match: string): string {
   return "Background";
 }
 
+// Known sections in RELATIONAL.md that carry active relationship context.
+// Growth Markers is excluded — it's a log, not active context to inject.
+const RELATIONAL_CONTEXT_SECTIONS = [
+  "Communication Patterns",
+  "Decision Dynamics",
+  "Friction Points",
+  "Trust Calibration",
+  "USER Communication Patterns to Mirror",
+  "Confidence Levels",
+];
+
+// Template placeholder patterns that indicate a section has no real content yet
+const PLACEHOLDER_RE = /^\s*[-*]\s*\(.*?\)\s*$/;
+
 function extractKeyPatterns(relational: string): string | null {
-  const lines = relational.split("\n").filter((l) => l.startsWith("- ") || l.startsWith("### "));
-  if (lines.length === 0) return null;
-  return lines.slice(0, 10).join("\n");
+  const lines = relational.split("\n");
+  const sections: Array<{ name: string; content: string[] }> = [];
+  let current: { name: string; content: string[] } | null = null;
+
+  for (const line of lines) {
+    // Detect ## headings
+    const h2Match = line.match(/^## (.+)/);
+    if (h2Match) {
+      const heading = h2Match[1].trim().replace(/\s*\(.*?\)\s*$/, ""); // strip parentheticals like "(Observed)"
+      if (RELATIONAL_CONTEXT_SECTIONS.some((s) => heading.startsWith(s))) {
+        current = { name: heading, content: [] };
+        sections.push(current);
+      } else {
+        current = null;
+      }
+      continue;
+    }
+
+    if (!current) continue;
+
+    // Stop at the next --- separator (section boundary)
+    if (line.trim() === "---") {
+      current = null;
+      continue;
+    }
+
+    // Skip empty lines, template placeholders, and pure headings within sections
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (PLACEHOLDER_RE.test(trimmed)) continue;
+    if (trimmed.startsWith("## ")) continue;
+
+    // Keep substantive content: bullets, sub-headings, and prose
+    current.content.push(line);
+  }
+
+  // Build output from sections that have real content
+  const parts: string[] = [];
+  for (const section of sections) {
+    if (section.content.length === 0) continue;
+    parts.push(`## ${section.name}\n${section.content.join("\n")}`);
+  }
+
+  return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
 // ============================================================================
@@ -935,8 +986,28 @@ async function writeSignificantMoments(dir: string, moments: SignificantMoment[]
 async function updateRelational(dir: string, updates: string[]): Promise<void> {
   const file = path.join(dir, "RELATIONAL.md");
   let content = await fs.readFile(file, "utf-8").catch(() => defaultRelational());
+
+  // Deduplicate: extract existing bullet text from Growth Markers and skip repeats.
+  // Normalize to lowercase trimmed strings for comparison.
+  const existingBullets = new Set<string>();
+  const growthIdx = content.indexOf("## Growth Markers");
+  if (growthIdx !== -1) {
+    const growthSection = content.slice(growthIdx);
+    // Find the next ## heading to bound the section (or take everything)
+    const nextHeadingIdx = growthSection.indexOf("\n## ", 1);
+    const bounded = nextHeadingIdx !== -1 ? growthSection.slice(0, nextHeadingIdx) : growthSection;
+    for (const line of bounded.split("\n")) {
+      if (line.startsWith("- ")) {
+        existingBullets.add(line.slice(2).trim().toLowerCase());
+      }
+    }
+  }
+
+  const newUpdates = updates.filter((u) => !existingBullets.has(u.trim().toLowerCase()));
+  if (newUpdates.length === 0) return;
+
   const date = new Date().toISOString().split("T")[0];
-  const block = updates.map((u) => `- ${u}`).join("\n");
+  const block = newUpdates.map((u) => `- ${u}`).join("\n");
   if (content.includes("## Growth Markers")) {
     content = content.replace(
       "## Growth Markers",
@@ -960,39 +1031,123 @@ async function updateUser(
   await fs.writeFile(file, content);
 }
 
-async function detectGaps(dir: string): Promise<Gap[]> {
-  const gaps: Gap[] = [];
-  const user = await fs.readFile(path.join(dir, "USER.md"), "utf-8").catch(() => "");
-  const rel = await fs.readFile(path.join(dir, "RELATIONAL.md"), "utf-8").catch(() => "");
+// Gap definitions: which sections to check, what category they fall in,
+// and what question to ask if the section is empty/placeholder-only.
+const GAP_CHECKS: Array<{
+  file: "user" | "relational";
+  section: string;
+  category: Gap["category"];
+  description: string;
+  suggestedQuestion: string;
+}> = [
+  // USER.md gaps
+  {
+    file: "user",
+    section: "Name",
+    category: "user",
+    description: "Don't know their name",
+    suggestedQuestion: "What should I call you?",
+  },
+  {
+    file: "user",
+    section: "Work",
+    category: "user",
+    description: "Don't know what they do",
+    suggestedQuestion: "What kind of work do you do?",
+  },
+  {
+    file: "user",
+    section: "Background",
+    category: "user",
+    description: "Don't know their background",
+    suggestedQuestion: "Tell me a bit about yourself — what's your background?",
+  },
+  // RELATIONAL.md gaps
+  {
+    file: "relational",
+    section: "Communication Patterns",
+    category: "relational",
+    description: "Don't know communication preferences",
+    suggestedQuestion: "Do you prefer I get straight to the point, or is more context helpful?",
+  },
+  {
+    file: "relational",
+    section: "Decision Dynamics",
+    category: "relational",
+    description: "Don't know how decisions are made together",
+    suggestedQuestion: "When we disagree on direction, how direct should I be?",
+  },
+  {
+    file: "relational",
+    section: "Trust Calibration",
+    category: "relational",
+    description: "Trust calibration not established",
+    suggestedQuestion: "What areas do you want me to take initiative on vs. check with you first?",
+  },
+  {
+    file: "relational",
+    section: "Friction Points",
+    category: "relational",
+    description: "No friction points recorded",
+    suggestedQuestion:
+      "Has anything I've done annoyed you or felt off? Knowing that helps me calibrate.",
+  },
+];
 
-  if (!user.toLowerCase().includes("name")) {
-    gaps.push({
-      category: "user",
-      description: "Don't know their name",
-      suggestedQuestion: "What should I call you?",
-    });
+/**
+ * Check whether a file has substantive content in a given section.
+ * Returns true if the section exists AND has at least one non-placeholder line.
+ */
+function sectionHasContent(fileContent: string, sectionName: string): boolean {
+  const lines = fileContent.split("\n");
+  let inSection = false;
+
+  for (const line of lines) {
+    // Detect ## or ### headings that match the section name (case-insensitive)
+    const headingMatch = line.match(/^#{2,3}\s+(.+)/);
+    if (headingMatch) {
+      const heading = headingMatch[1].trim().replace(/\s*\(.*?\)\s*$/, "");
+      if (heading.toLowerCase().includes(sectionName.toLowerCase())) {
+        inSection = true;
+        continue;
+      }
+      if (inSection) {
+        // Hit the next heading — stop scanning
+        break;
+      }
+      continue;
+    }
+
+    if (!inSection) continue;
+    if (line.trim() === "---") break;
+
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // Skip placeholder lines like "- (Populated as Bernard learns...)"
+    if (PLACEHOLDER_RE.test(trimmed)) continue;
+    // Found real content
+    return true;
   }
-  if (!user.toLowerCase().includes("work")) {
-    gaps.push({
-      category: "user",
-      description: "Don't know what they do",
-      suggestedQuestion: "What kind of work do you do?",
-    });
-  }
-  if (!rel.toLowerCase().includes("communication")) {
-    gaps.push({
-      category: "relational",
-      description: "Don't know communication preferences",
-      suggestedQuestion: "Do you prefer I get straight to the point, or is more context helpful?",
-    });
-  }
-  if (!rel.toLowerCase().includes("disagree")) {
-    gaps.push({
-      category: "relational",
-      description: "Don't know how to handle disagreements",
-      suggestedQuestion:
-        "When I think you might be heading the wrong direction, how direct should I be?",
-    });
+
+  return false;
+}
+
+async function detectGaps(dir: string): Promise<Gap[]> {
+  const userContent = await fs.readFile(path.join(dir, "USER.md"), "utf-8").catch(() => "");
+  const relContent = await fs.readFile(path.join(dir, "RELATIONAL.md"), "utf-8").catch(() => "");
+
+  const files = { user: userContent, relational: relContent };
+  const gaps: Gap[] = [];
+
+  for (const check of GAP_CHECKS) {
+    const content = files[check.file === "user" ? "user" : "relational"];
+    if (!sectionHasContent(content, check.section)) {
+      gaps.push({
+        category: check.category,
+        description: check.description,
+        suggestedQuestion: check.suggestedQuestion,
+      });
+    }
   }
 
   return gaps;
