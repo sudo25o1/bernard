@@ -249,11 +249,32 @@ link() {
 # ============================================================================
 
 setup_qmd() {
+    # Ensure PATH includes homebrew and common node locations
+    # (SSH sessions often have minimal PATH)
+    export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/share/pnpm:$HOME/Library/pnpm:$PATH"
+    hash -r 2>/dev/null
+    
     if ! command -v qmd &> /dev/null; then
         echo -e "${YELLOW}Installing QMD semantic search...${NC}"
-        npm install -g @tobilu/qmd 2>/dev/null || pnpm add -g @tobilu/qmd 2>/dev/null || true
+        
+        # Check if npm/pnpm is available
+        if ! command -v npm &> /dev/null && ! command -v pnpm &> /dev/null; then
+            echo -e "${RED}Warning: npm/pnpm not found in PATH. QMD install skipped.${NC}"
+            echo -e "${YELLOW}Install manually with: npm install -g @tobilu/qmd${NC}"
+            return
+        fi
+        
+        # Try install
+        if command -v npm &> /dev/null; then
+            npm install -g @tobilu/qmd
+        elif command -v pnpm &> /dev/null; then
+            pnpm add -g @tobilu/qmd
+        fi
+        
+        # Verify install succeeded
+        hash -r 2>/dev/null
         if ! command -v qmd &> /dev/null; then
-            echo -e "${YELLOW}QMD install failed -- skipping semantic index setup.${NC}"
+            echo -e "${RED}Warning: QMD install failed -- skipping semantic index setup.${NC}"
             echo -e "${YELLOW}Install manually with: npm install -g @tobilu/qmd${NC}"
             return
         fi
