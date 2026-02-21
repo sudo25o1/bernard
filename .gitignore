@@ -81,3 +81,6 @@ USER.md
 .agent/*.json
 !.agent/workflows/
 local/
+
+# Bernard workspace (runtime state, handoffs, research output)
+/workspace/
