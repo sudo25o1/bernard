@@ -13,6 +13,8 @@ RUN set -eux; \
     curl \
     git \
     sudo \
+    build-essential \
+    python3 \
   && rm -rf /var/lib/apt/lists/*
 
 COPY run.sh /usr/local/bin/openclaw-install-smoke
