@@ -241,6 +241,42 @@ build() {
 link() {
     echo -e "${YELLOW}Linking bernard command...${NC}"
     pnpm link --global
+    
+    # Determine pnpm's global bin directory
+    PNPM_BIN=""
+    if command -v pnpm &> /dev/null; then
+        # Try pnpm's built-in command first
+        PNPM_BIN="$(pnpm bin -g 2>/dev/null || true)"
+    fi
+    
+    # Fallback to common locations if pnpm bin -g didn't work
+    if [ -z "$PNPM_BIN" ] || [ ! -d "$PNPM_BIN" ]; then
+        for candidate in \
+            "$HOME/.local/share/pnpm" \
+            "$HOME/Library/pnpm" \
+            "/usr/local/share/pnpm" \
+            "/root/.local/share/pnpm" \
+            "/root/Library/pnpm"; do
+            if [ -d "$candidate" ] && [ -f "$candidate/bernard" ]; then
+                PNPM_BIN="$candidate"
+                break
+            fi
+        done
+    fi
+    
+    # Create symlinks in /usr/local/bin for system-wide access
+    if [ -n "$PNPM_BIN" ] && [ -f "$PNPM_BIN/bernard" ]; then
+        echo -e "${YELLOW}Creating system-wide symlinks...${NC}"
+        # Use sudo only if not running as root
+        if [ "$(id -u)" -eq 0 ]; then
+            ln -sf "$PNPM_BIN/bernard" /usr/local/bin/bernard
+            ln -sf "$PNPM_BIN/openclaw" /usr/local/bin/openclaw
+        else
+            sudo ln -sf "$PNPM_BIN/bernard" /usr/local/bin/bernard
+            sudo ln -sf "$PNPM_BIN/openclaw" /usr/local/bin/openclaw
+        fi
+    fi
+    
     echo -e "${GREEN}Bernard command available globally.${NC}"
 }
 
