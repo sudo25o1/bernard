@@ -264,11 +264,11 @@ setup_qmd() {
             return
         fi
         
-        # Try install
+        # Try install (non-fatal if it fails)
         if command -v npm &> /dev/null; then
-            npm install -g @tobilu/qmd
+            npm install -g @tobilu/qmd || echo -e "${YELLOW}QMD npm install failed${NC}"
         elif command -v pnpm &> /dev/null; then
-            pnpm add -g @tobilu/qmd
+            pnpm add -g @tobilu/qmd || echo -e "${YELLOW}QMD pnpm install failed${NC}"
         fi
         
         # Verify install succeeded
